@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bg-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e1f5fe" />
+      <stop offset="100%" stop-color="#ffffff" />
+    </linearGradient>
+    <linearGradient id="circle-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3a86ff" />
+      <stop offset="100%" stop-color="#8338ec" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect x="0" y="0" width="600" height="400" fill="url(#bg-gradient)" />
+  
+  <!-- AI Brain Visualization -->
+  <circle cx="300" cy="200" r="120" fill="url(#circle-gradient)" opacity="0.9" />
+  
+  <!-- Neural Network Nodes -->
+  <g id="nodes">
+    <!-- Outer nodes -->
+    <circle cx="180" cy="120" r="10" fill="white" />
+    <circle cx="160" cy="200" r="10" fill="white" />
+    <circle cx="200" cy="280" r="10" fill="white" />
+    <circle cx="300" cy="320" r="10" fill="white" />
+    <circle cx="400" cy="280" r="10" fill="white" />
+    <circle cx="440" cy="200" r="10" fill="white" />
+    <circle cx="420" cy="120" r="10" fill="white" />
+    <circle cx="300" cy="80" r="10" fill="white" />
+    
+    <!-- Inner nodes -->
+    <circle cx="220" cy="150" r="8" fill="white" opacity="0.7" />
+    <circle cx="240" cy="240" r="8" fill="white" opacity="0.7" />
+    <circle cx="350" cy="250" r="8" fill="white" opacity="0.7" />
+    <circle cx="380" cy="150" r="8" fill="white" opacity="0.7" />
+    
+    <!-- Center node -->
+    <circle cx="300" cy="200" r="25" fill="white" />
+  </g>
+  
+  <!-- Connection Lines -->
+  <g id="connections" stroke="white" stroke-width="2" opacity="0.6">
+    <!-- Outer connections -->
+    <line x1="180" y1="120" x2="220" y2="150" />
+    <line x1="160" y1="200" x2="220" y2="150" />
+    <line x1="160" y1="200" x2="240" y2="240" />
+    <line x1="200" y1="280" x2="240" y2="240" />
+    <line x1="200" y1="280" x2="300" y2="320" />
+    <line x1="300" y1="320" x2="350" y2="250" />
+    <line x1="400" y1="280" x2="350" y2="250" />
+    <line x1="400" y1="280" x2="440" y2="200" />
+    <line x1="440" y1="200" x2="380" y2="150" />
+    <line x1="420" y1="120" x2="380" y2="150" />
+    <line x1="420" y1="120" x2="300" y2="80" />
+    <line x1="300" y1="80" x2="220" y2="150" />
+    
+    <!-- Inner to center connections -->
+    <line x1="220" y1="150" x2="300" y2="200" />
+    <line x1="240" y1="240" x2="300" y2="200" />
+    <line x1="350" y1="250" x2="300" y2="200" />
+    <line x1="380" y1="150" x2="300" y2="200" />
+  </g>
+  
+  <!-- Animated Pulses (visual only) -->
+  <circle cx="300" cy="200" r="60" fill="none" stroke="white" stroke-width="2" opacity="0.3">
+    <animate attributeName="r" from="60" to="140" dur="3s" repeatCount="indefinite" />
+    <animate attributeName="opacity" from="0.3" to="0" dur="3s" repeatCount="indefinite" />
+  </circle>
+  
+  <circle cx="300" cy="200" r="40" fill="none" stroke="white" stroke-width="2" opacity="0.3">
+    <animate attributeName="r" from="40" to="120" dur="3s" begin="1s" repeatCount="indefinite" />
+    <animate attributeName="opacity" from="0.3" to="0" dur="3s" begin="1s" repeatCount="indefinite" />
+  </circle>
+</svg>

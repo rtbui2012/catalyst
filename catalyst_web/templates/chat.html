@@ -1,0 +1,90 @@
+{% extends 'base.html' %}
+
+{% block title %}Chat with Catalyst AI{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github.min.css">
+{% endblock %}
+
+{% block content %}
+<div class="chat-container">
+    <div class="chat-sidebar">
+        <div class="sidebar-header">
+            <h2>Conversations</h2>
+            <button id="new-chat" class="new-chat-btn">
+                <i class="fas fa-plus"></i> New Chat
+            </button>
+        </div>
+        <div class="conversation-list" id="conversation-list">
+            <!-- Conversation history will be populated here -->
+            <div class="empty-state">
+                <p>No conversations yet</p>
+            </div>
+        </div>
+        <div class="sidebar-footer">
+            <div class="user-info">
+                <div class="user-avatar">
+                    <i class="fas fa-user"></i>
+                </div>
+                <div class="user-name">{{ username }}</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="chat-main">
+        <div class="chat-header">
+            <h2>Chat with Catalyst AI</h2>
+            <div class="chat-actions">
+                <button id="clear-chat" class="icon-button" title="Clear chat">
+                    <i class="fas fa-trash"></i>
+                </button>
+                <button id="export-chat" class="icon-button" title="Export conversation">
+                    <i class="fas fa-download"></i>
+                </button>
+                <div class="connection-status">
+                    <span class="status-indicator connected"></span>
+                    <span class="status-text">Connected</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="chat-messages" id="chat-messages">
+            <div class="message system">
+                <div class="message-content">
+                    <p>Hello! I'm Catalyst AI, your intelligent assistant. How can I help you today?</p>
+                </div>
+            </div>
+            <!-- Messages will be displayed here -->
+        </div>
+        
+        <div class="chat-input-container">
+            <div class="chat-tools">
+                <button class="tool-button" title="Attach file">
+                    <i class="fas fa-paperclip"></i>
+                </button>
+                <button class="tool-button" title="Code mode">
+                    <i class="fas fa-code"></i>
+                </button>
+            </div>
+            <div class="chat-input-wrapper">
+                <textarea id="chat-input" placeholder="Type your message here..." rows="1"></textarea>
+                <button id="send-message" class="send-button" disabled>
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </div>
+            <div class="typing-indicator" id="typing-indicator">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.3.0/marked.min.js"></script>
+<script src="{{ url_for('static', filename='js/chat.js') }}"></script>
+{% endblock %}

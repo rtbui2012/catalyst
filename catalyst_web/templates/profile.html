@@ -1,0 +1,263 @@
+{% extends 'base.html' %}
+
+{% block title %}Profile - Catalyst AI{% endblock %}
+
+{% block head %}
+<style>
+    .profile-container {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: var(--spacing-xl);
+    }
+    
+    .profile-header {
+        margin-bottom: var(--spacing-xl);
+    }
+    
+    .profile-card {
+        background-color: white;
+        border-radius: var(--border-radius-lg);
+        box-shadow: var(--shadow-md);
+        padding: var(--spacing-xl);
+        margin-bottom: var(--spacing-xl);
+    }
+    
+    .user-info {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-lg);
+        margin-bottom: var(--spacing-lg);
+    }
+    
+    .user-avatar {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        background-color: var(--primary-color);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2rem;
+        color: white;
+    }
+    
+    .user-details h3 {
+        margin-bottom: var(--spacing-xs);
+    }
+    
+    .user-details p {
+        color: var(--gray-600);
+        margin-bottom: var(--spacing-xs);
+    }
+    
+    .tab-navigation {
+        display: flex;
+        border-bottom: 1px solid var(--gray-300);
+        margin-bottom: var(--spacing-lg);
+    }
+    
+    .tab-item {
+        padding: var(--spacing-sm) var(--spacing-lg);
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+        margin-bottom: -1px;
+        font-weight: 500;
+    }
+    
+    .tab-item.active {
+        border-bottom-color: var(--primary-color);
+        color: var(--primary-color);
+    }
+    
+    .tab-content {
+        display: none;
+    }
+    
+    .tab-content.active {
+        display: block;
+    }
+    
+    .form-row {
+        margin-bottom: var(--spacing-md);
+    }
+    
+    .form-row label {
+        display: block;
+        margin-bottom: var(--spacing-xs);
+        font-weight: 500;
+    }
+    
+    .form-control {
+        width: 100%;
+        padding: var(--spacing-sm);
+        border: 1px solid var(--gray-300);
+        border-radius: var(--border-radius-md);
+        font-family: var(--font-family);
+    }
+    
+    .form-actions {
+        margin-top: var(--spacing-lg);
+        display: flex;
+        justify-content: flex-end;
+        gap: var(--spacing-md);
+    }
+    
+    .usage-stat {
+        text-align: center;
+        padding: var(--spacing-md);
+    }
+    
+    .stat-value {
+        font-size: 2rem;
+        font-weight: 700;
+        color: var(--primary-color);
+    }
+    
+    .stat-label {
+        color: var(--gray-600);
+        font-size: 0.9rem;
+    }
+    
+    .usage-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: var(--spacing-md);
+        margin-bottom: var(--spacing-lg);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="profile-container">
+    <div class="profile-header">
+        <h1>Your Profile</h1>
+        <p>Manage your account information and view your usage statistics</p>
+    </div>
+    
+    <div class="profile-card">
+        <div class="user-info">
+            <div class="user-avatar">
+                <i class="fas fa-user"></i>
+            </div>
+            <div class="user-details">
+                <h3>{{ username }}</h3>
+                <p>User ID: {{ username|lower }}123</p>
+                <p>Member since: March 2025</p>
+            </div>
+        </div>
+        
+        <div class="tab-navigation">
+            <div class="tab-item active" data-tab="account">Account Settings</div>
+            <div class="tab-item" data-tab="usage">Usage Statistics</div>
+            <div class="tab-item" data-tab="preferences">Preferences</div>
+        </div>
+        
+        <div class="tab-content active" id="account-tab">
+            <form action="{{ url_for('auth.profile') }}" method="POST">
+                <div class="form-row">
+                    <label for="display_name">Display Name</label>
+                    <input type="text" id="display_name" name="display_name" class="form-control" value="{{ username }}">
+                </div>
+                
+                <div class="form-row">
+                    <label for="email">Email Address</label>
+                    <input type="email" id="email" name="email" class="form-control" value="user@example.com">
+                </div>
+                
+                <div class="form-row">
+                    <label for="current_password">Current Password</label>
+                    <input type="password" id="current_password" name="current_password" class="form-control">
+                </div>
+                
+                <div class="form-row">
+                    <label for="new_password">New Password</label>
+                    <input type="password" id="new_password" name="new_password" class="form-control">
+                </div>
+                
+                <div class="form-row">
+                    <label for="confirm_password">Confirm New Password</label>
+                    <input type="password" id="confirm_password" name="confirm_password" class="form-control">
+                </div>
+                
+                <div class="form-actions">
+                    <button type="submit" class="primary-button">Save Changes</button>
+                </div>
+            </form>
+        </div>
+        
+        <div class="tab-content" id="usage-tab">
+            <div class="usage-stats">
+                <div class="usage-stat">
+                    <div class="stat-value">23</div>
+                    <div class="stat-label">Total Conversations</div>
+                </div>
+                <div class="usage-stat">
+                    <div class="stat-value">147</div>
+                    <div class="stat-label">Messages Sent</div>
+                </div>
+                <div class="usage-stat">
+                    <div class="stat-value">12</div>
+                    <div class="stat-label">Tools Used</div>
+                </div>
+            </div>
+            
+            <h3>Recent Activity</h3>
+            <p>Your recent conversations and interactions will appear here.</p>
+        </div>
+        
+        <div class="tab-content" id="preferences-tab">
+            <h3>Appearance</h3>
+            <div class="form-row">
+                <label>
+                    <input type="checkbox" id="dark_mode" name="dark_mode">
+                    Enable Dark Mode
+                </label>
+            </div>
+            
+            <h3>Notifications</h3>
+            <div class="form-row">
+                <label>
+                    <input type="checkbox" id="email_notifications" name="email_notifications" checked>
+                    Email Notifications
+                </label>
+            </div>
+            
+            <div class="form-row">
+                <label>
+                    <input type="checkbox" id="browser_notifications" name="browser_notifications" checked>
+                    Browser Notifications
+                </label>
+            </div>
+            
+            <div class="form-actions">
+                <button type="button" class="primary-button">Save Preferences</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Tab navigation functionality
+        const tabItems = document.querySelectorAll('.tab-item');
+        const tabContents = document.querySelectorAll('.tab-content');
+        
+        tabItems.forEach(tab => {
+            tab.addEventListener('click', function() {
+                // Remove active class from all tabs
+                tabItems.forEach(item => item.classList.remove('active'));
+                tabContents.forEach(content => content.classList.remove('active'));
+                
+                // Add active class to clicked tab
+                this.classList.add('active');
+                
+                // Show corresponding content
+                const tabName = this.getAttribute('data-tab');
+                document.getElementById(`${tabName}-tab`).classList.add('active');
+            });
+        });
+    });
+</script>
+{% endblock %}
