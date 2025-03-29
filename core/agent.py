@@ -11,6 +11,7 @@ import json
 import time
 import uuid
 import logging
+import textwrap
 from typing import Dict, List, Optional, Any, Union, Callable
 
 from .config import AgentConfig
@@ -187,77 +188,87 @@ class AgentExecutor(Executor):
                 # Get the tool
                 tool_registry = self.agent_core.tool_registry
                 
-                # Additional handling for code execution - wrap with try/except for retry
-                if step.tool_name == "execute_python" and "code" in step.tool_args:
-                    original_code = step.tool_args["code"]
+                # Execute the tool - result will be processed generically
+                result = tool_registry.execute_tool(step.tool_name, **step.tool_args)
+                
+                # If execution fails, try to fix it using the tool registry's error handling
+                if not result.success and result.error:
+                    self.logger.info(f"Tool execution failed with error: {result.error}")
                     
-                    # First attempt to execute the code
-                    result = tool_registry.execute_tool(step.tool_name, **step.tool_args)
+                    # Check if any registered tool can handle this error
+                    recovery_step = tool_registry.create_recovery_step(result.error, step.to_dict())
                     
-                    # If execution fails due to a syntax or other error, try to fix the code
-                    if not result.success and "error" in result.__dict__ and result.error:
-                        self.logger.info(f"Code execution failed with error: {result.error}")
+                    if recovery_step:
+                        # A recovery step was found, execute it
+                        self.logger.info(f"Found recovery step: {recovery_step['description']}")
                         
-                        # Get the error message from the result
-                        error_message = result.error
+                        # Create temporary PlanStep for recovery
+                        recovery_plan_step = PlanStep(
+                            description=recovery_step['description'],
+                            tool_name=recovery_step['tool_name'],
+                            tool_args=recovery_step['tool_args']
+                        )
                         
-                        # Request a fix from the LLM
-                        self.logger.info("Attempting to fix the code...")
-                        fix_prompt = f"""
-The following Python code failed with this error:
-{error_message}
+                        # Execute the recovery step
+                        self.logger.info(f"Executing recovery step: {recovery_step['description']}")
+                        recovery_result = tool_registry.execute_tool(
+                            recovery_plan_step.tool_name, 
+                            **recovery_plan_step.tool_args
+                        )
+                        
+                        if recovery_result.success:
+                            self.logger.info("Recovery step succeeded, retrying original step")
+                            # Retry the original step
+                            result = tool_registry.execute_tool(step.tool_name, **step.tool_args)
+                        else:
+                            self.logger.info(f"Recovery step failed: {recovery_result.error}")
+                    else:
+                        # No recovery step was found, try generic fixes
+                        if "code" in step.tool_args and isinstance(step.tool_args["code"], str):
+                            # This appears to be a code execution step with code, try to fix it generically
+                            self.logger.info("Attempting to fix the code...")
+                            
+                            # Request a fix from the LLM
+                            fix_prompt = textwrap.dedent(f"""
+                                The following code failed with this error:
+                                {result.error}
 
-Original code:
-```python
-{original_code}
-```
+                                Original code:
+                                ```python
+                                {step.tool_args["code"]}
+                                ```
 
-Please provide a corrected version of this code that addresses the error. Only return the fixed code, nothing else.
-"""
-                        # Generate fixed code using the LLM
-                        fixed_code = self.agent_core.llm_manager.generate_response(fix_prompt, {})
-                        
-                        # Extract the actual code from the response (it might include markdown code blocks)
-                        if "```python" in fixed_code:
-                            fixed_code = fixed_code.split("```python")[1].split("```")[0].strip()
-                        elif "```" in fixed_code:
-                            fixed_code = fixed_code.split("```")[1].split("```")[0].strip()
-                        
-                        self.logger.info(f"Generated fixed code:\n{fixed_code}")
-                        
-                        # Try again with the fixed code
-                        step.tool_args["code"] = fixed_code
-                        self.logger.info("Retrying with fixed code...")
-                        result = tool_registry.execute_tool(step.tool_name, **step.tool_args)
-                    
-                    # Store the result
-                    step.result = result.data if result.success else None
-                    step.error = result.error if not result.success else None
-                    
-                    # Log the execution result
-                    self.agent_core.memory.add_execution(
-                        action=f"Tool execution: {step.tool_name}",
-                        status="completed" if result.success else "failed",
-                        result=result.data if result.success else result.error
-                    )
-                    
-                    return result.success
-                else:
-                    # For non-code execution tools
-                    result = tool_registry.execute_tool(step.tool_name, **step.tool_args)
-                    
-                    # Store the result
-                    step.result = result.data if result.success else None
-                    step.error = result.error if not result.success else None
-                    
-                    # Log the execution result
-                    self.agent_core.memory.add_execution(
-                        action=f"Tool execution: {step.tool_name}",
-                        status="completed" if result.success else "failed",
-                        result=result.data if result.success else result.error
-                    )
-                    
-                    return result.success
+                                Please provide a corrected version of this code that addresses the error. Only return the fixed code, nothing else.
+                                """)
+                            
+                            # Generate fixed code using the LLM
+                            fixed_code = self.agent_core.llm_manager.generate_response(fix_prompt, {})
+                            
+                            # Extract the actual code from the response (it might include markdown code blocks)
+                            if "```python" in fixed_code:
+                                fixed_code = fixed_code.split("```python")[1].split("```")[0].strip()
+                            elif "```" in fixed_code:
+                                fixed_code = fixed_code.split("```")[1].split("```")[0].strip()
+                            
+                            self.logger.info(f"Generated fixed code:\n{fixed_code}")
+                            
+                            # Try again with the fixed code
+                            step.tool_args["code"] = fixed_code
+                            self.logger.info("Retrying with fixed code...")
+                            result = tool_registry.execute_tool(step.tool_name, **step.tool_args)
+                
+                # Store the result
+                step.result = result.data if result.success else None
+                step.error = result.error if not result.success else None
+                
+                # Log the execution result
+                self.agent_core.memory.add_execution(
+                    action=f"Tool execution: {step.tool_name}",
+                    status="completed" if result.success else "failed",
+                    result=result.data if result.success else result.error
+                )
+                
+                return result.success
             else:
                 # For steps that don't use tools (language-based tasks), generate output using the LLM
                 response = ""
@@ -550,28 +561,59 @@ class AgentCore:
             error_details = failed_step.error if failed_step.error else "Unknown error"
             self.logger.error(f"Plan execution failed at step: {failed_step.description}. Error: {error_details}")
             
-            # Check if this is a non-code execution failure (code failures are already handled in execute_step)
-            if failed_step.tool_name != "execute_python":
-                self.logger.info("Attempting to recover from non-code failure by reevaluating the plan...")
+            # Attempt to recover from any failure by analyzing the error and reevaluating the plan
+            self.logger.info(f"Attempting to recover from failure by reevaluating the plan...")
+            
+            # Create the context for plan reevaluation
+            reevaluation_context = {
+                'conversation_history': self.memory.get_conversation_history(as_text=True),
+                'available_tools': self.tool_registry.get_all_tools(),
+                'config': self.config.to_dict(),
+                'failed_step': failed_step.to_dict(),
+                'error_details': error_details
+            }
+            
+            # First, check if the tool registry can create a recovery step
+            recovery_step_data = self.tool_registry.create_recovery_step(error_details, failed_step.to_dict())
+            predefined_recovery = False
+            
+            if recovery_step_data:
+                predefined_recovery = True
+                self.logger.info(f"Found predefined recovery step for this error type: {recovery_step_data['description']}")
                 
-                # Create the context for plan reevaluation
-                reevaluation_context = {
-                    'conversation_history': self.memory.get_conversation_history(as_text=True),
-                    'available_tools': self.tool_registry.get_all_tools(),
-                    'config': self.config.to_dict(),
-                    'failed_step': failed_step.to_dict(),
-                    'error_details': error_details
-                }
+                # Create a recovery step using the predefined handler
+                recovery_step = PlanStep(
+                    description=recovery_step_data['description'],
+                    tool_name=recovery_step_data['tool_name'],
+                    tool_args=recovery_step_data['tool_args']
+                )
+                recovery_step.status = PlanStatus.PENDING
                 
-                # Create a new recovery step to find an alternative approach
-                recovery_prompt = f"""
-The step "{failed_step.description}" failed with error: {error_details}
+                # Add the recovery step to the plan
+                plan.add_step(recovery_step)
+                
+                # If this recovery is for a missing module, add a retry step for the original code
+                if "Install missing" in recovery_step.description and recovery_step.tool_name == "package_installer":
+                    retry_step = PlanStep(
+                        description=f"Retry the original step after addressing the dependency issue",
+                        tool_name=failed_step.tool_name,
+                        tool_args=failed_step.tool_args
+                    )
+                    retry_step.status = PlanStatus.PENDING
+                    plan.add_step(retry_step)
+                    self.logger.info("Added retry step for original action after dependency resolution")
+            
+            # If no predefined recovery step was found, ask the LLM for help
+            if not predefined_recovery:
+                # Create a recovery step to find an alternative approach
+                recovery_prompt = textwrap.dedent(f"""
+                    The step "{failed_step.description}" failed with error: {error_details}
 
-Please analyze this failure and determine if there's an alternative way to accomplish 
-the same goal using a different tool or approach. 
+                    Please analyze this failure and determine if there's an alternative way to accomplish 
+                    the same goal using a different tool or approach. 
 
-Original goal: {plan.goal}
-"""
+                    Original goal: {plan.goal}
+                    """)
                 # Add a recovery plan step
                 recovery_step = PlanStep(
                     description=f"Analyze failure and find alternative approach for: {failed_step.description}",
@@ -589,26 +631,26 @@ Original goal: {plan.goal}
                 recovery_step.status = PlanStatus.COMPLETED
                 
                 # Now use the recovery analysis to create an alternative approach step
-                alternative_prompt = f"""
-Based on your analysis:
+                alternative_prompt = textwrap.dedent(f"""
+                Based on your analysis:
 
-{recovery_result}
+                {recovery_result}
 
-Please provide a SINGLE alternative step to replace the failed step:
-"{failed_step.description}"
+                Please provide a SINGLE alternative step to replace the failed step:
+                "{failed_step.description}"
 
-You MUST provide an alternative approach that can be executed by an AI agent using available tools.
-DO NOT suggest manual steps that would require human intervention.
+                You MUST provide an alternative approach that can be executed by an AI agent using available tools.
+                DO NOT suggest manual steps that would require human intervention.
 
-Available tools: {', '.join([tool.name for tool in self.tool_registry.get_all_tools()])}
+                Available tools: {', '.join([tool.name for tool in self.tool_registry.get_all_tools()])}
 
-Format your response as a JSON object with these fields:
-{{
-  "description": "Step description",
-  "tool_name": "name_of_tool or null if no tool is needed",
-  "tool_args": {{ "param1": "value1", "param2": "value2" }} or null if no tool is used
-}}
-"""
+                Format your response as a JSON object with these fields:
+                {{
+                  "description": "Step description",
+                  "tool_name": "name_of_tool or null if no tool is needed",
+                  "tool_args": {{ "param1": "value1", "param2": "value2" }} or null if no tool is used
+                }}
+                """)
                 alternative_json = self.llm_manager.generate_response(alternative_prompt, reevaluation_context)
                 
                 try:
@@ -634,44 +676,69 @@ Format your response as a JSON object with these fields:
                         # Fall back to using a tool we know exists - web_search
                         if 'web_search' in [t.name for t in self.tool_registry.get_all_tools()]:
                             tool_name = 'web_search'
-                            tool_args = {'query': f"{plan.goal} alternative"}
+                            tool_args = {'query': f"{plan.goal} alternative approach"}
                             description = f"Search for alternative ways to {plan.goal}"
                             self.logger.info(f"Falling back to web_search tool for alternative approach")
                     
                     # Add the alternative step to the plan
-                    alternative_step = PlanStep(
+                    recovery_step = PlanStep(
                         description=description,
                         tool_name=tool_name,
                         tool_args=tool_args
                     )
-                    alternative_step.status = PlanStatus.PENDING
-                    plan.add_step(alternative_step)
-                    
-                    # Try to execute the alternative step
-                    self.logger.info(f"Attempting alternative approach: {description}")
-                    alternative_step.status = PlanStatus.IN_PROGRESS
-                    success = self.executor.execute_step(alternative_step, reevaluation_context)
-                    alternative_step.status = PlanStatus.COMPLETED if success else PlanStatus.FAILED
-                    
-                    if success:
-                        self.logger.info("Alternative approach succeeded")
-                        # If the alternative worked, generate a success response
-                        return self._generate_success_response(plan)
+                    recovery_step.status = PlanStatus.PENDING
+                    plan.add_step(recovery_step)
                     
                 except Exception as e:
-                    self.logger.error(f"Error during plan recovery: {str(e)}")
-                    # Continue to the failure response if recovery fails
+                    self.logger.error(f"Error creating alternative step from LLM response: {str(e)}")
+                    # If we can't parse the response, create a fallback search step
+                    if 'web_search' in [t.name for t in self.tool_registry.get_all_tools()]:
+                        recovery_step = PlanStep(
+                            description=f"Search for alternative approaches to {plan.goal}",
+                            tool_name='web_search',
+                            tool_args={'query': f"{plan.goal} alternative solution {error_details.split(':')[0]}"}
+                        )
+                        recovery_step.status = PlanStatus.PENDING
+                        plan.add_step(recovery_step)
+                        self.logger.info("Added fallback web search step for recovery")
             
-            # Generate a response based on the failure
-            response_prompt = f"""
-The following task failed: "{plan.goal}"
+            # Execute the recovery steps
+            recovery_success = False
+            for step in plan.steps:
+                if step.status == PlanStatus.PENDING:
+                    self.logger.info(f"Executing recovery step: {step.description}")
+                    step.status = PlanStatus.IN_PROGRESS
+                    step_success = self.executor.execute_step(step, reevaluation_context)
+                    step.status = PlanStatus.COMPLETED if step_success else PlanStatus.FAILED
+                    
+                    if step_success:
+                        self.logger.info(f"Recovery step succeeded: {step.description}")
+                        recovery_success = True
+                        
+                        # If this was a retry step after a successful recovery, we're done
+                        if "Retry the original" in step.description:
+                            self.logger.info("Original step retry succeeded after recovery")
+                            return self._generate_success_response(plan)
+                    else:
+                        self.logger.warning(f"Recovery step failed: {step.description}")
+            
+            # If any recovery step succeeded, generate a success response
+            if recovery_success:
+                self.logger.info("At least one recovery step succeeded, generating success response")
+                return self._generate_success_response(plan)
+            
+            # All recovery attempts failed, generate a failure response
+            response_prompt = textwrap.dedent(f"""
+                The following task failed: "{plan.goal}"
 
-The error occurred at step: "{failed_step.description}"
-Error details: {error_details}
+                The error occurred at step: "{failed_step.description}"
+                Error details: {error_details}
 
-Please generate a helpful response for the user about this failure, explaining what went wrong
-and suggesting alternatives if possible.
-"""
+                Recovery attempts were made but were unsuccessful.
+
+                Please generate a helpful response for the user about this failure, explaining what went wrong
+                and suggesting alternatives if possible.
+                """)
             return self.llm_manager.generate_response(response_prompt, context)
         else:
             # If no specific failed step found, provide a generic failure message
@@ -680,19 +747,6 @@ and suggesting alternatives if possible.
                 "I'm sorry, but I encountered an issue while trying to complete your request. "
                 "There was a problem with the execution process. Please try again or rephrase your request."
             )
-    
-    def _generate_direct_response(self, message: str, context: Dict[str, Any]) -> str:
-        """
-        Generate a direct response without using planning.
-        
-        Args:
-            message: The user message
-            context: Additional context
-            
-        Returns:
-            Response message
-        """
-        return self.llm_manager.generate_response(message, context)
 
 
 # Import these for easier access when importing the module

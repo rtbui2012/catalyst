@@ -190,53 +190,43 @@ class FunctionTool(Tool):
 
 class ToolRegistry:
     """
-    Registry for managing available tools.
+    Registry for tools available to the agent.
     
-    This class provides functionality for registering tools, discovering
-    available tools, and selecting the appropriate tool for a task.
+    This class manages the registration and lookup of tools, as well as
+    maintaining metadata about tool capabilities and error handling strategies.
     """
     
     def __init__(self):
         """Initialize the tool registry."""
-        self.tools: Dict[str, Tool] = {}  # Map of tool name to tool
+        self._tools = {}
+        self._error_handlers = {}  # Map of error patterns to tool names that can handle them
     
     def register_tool(self, tool: Tool) -> None:
         """
-        Register a tool in the registry.
+        Register a tool with the registry.
         
         Args:
             tool: The tool to register
         """
-        self.tools[tool.name] = tool
+        self._tools[tool.name] = tool
+        
+        # If the tool has declared error handling capabilities, register those
+        if hasattr(tool, 'get_error_handlers') and callable(getattr(tool, 'get_error_handlers')):
+            error_handlers = tool.get_error_handlers()
+            for error_pattern, handler_info in error_handlers.items():
+                self._error_handlers[error_pattern] = handler_info
     
-    def register_function(
-        self, 
-        func: Callable, 
-        name: Optional[str] = None, 
-        description: Optional[str] = None
-    ) -> None:
+    def get_tool(self, name: str) -> Optional[Tool]:
         """
-        Register a function as a tool.
+        Get a tool by name.
         
         Args:
-            func: The function to register
-            name: Name for the tool (defaults to function name)
-            description: Description of what the tool does (defaults to function docstring)
-        """
-        tool = FunctionTool(func, name, description)
-        self.register_tool(tool)
-    
-    def get_tool(self, tool_name: str) -> Optional[Tool]:
-        """
-        Get a specific tool by name.
-        
-        Args:
-            tool_name: Name of the tool to retrieve
+            name: Name of the tool to get
             
         Returns:
             The tool if found, None otherwise
         """
-        return self.tools.get(tool_name)
+        return self._tools.get(name)
     
     def get_all_tools(self) -> List[Tool]:
         """
@@ -245,43 +235,86 @@ class ToolRegistry:
         Returns:
             List of all registered tools
         """
-        return list(self.tools.values())
+        return list(self._tools.values())
     
-    def search_tools(self, query: str) -> List[Tool]:
+    def execute_tool(self, name: str, **kwargs) -> ToolResult:
         """
-        Search for tools matching a query.
+        Execute a tool by name with the given arguments.
         
         Args:
-            query: Search query (matches against tool name and description)
-            
-        Returns:
-            List of tools matching the query
-        """
-        query = query.lower()
-        return [
-            tool for tool in self.tools.values()
-            if query in tool.name.lower() or query in tool.description.lower()
-        ]
-    
-    def execute_tool(self, tool_name: str, **kwargs) -> ToolResult:
-        """
-        Execute a tool by name with the provided arguments.
-        
-        Args:
-            tool_name: Name of the tool to execute
+            name: Name of the tool to execute
             **kwargs: Arguments to pass to the tool
             
         Returns:
             Result of the tool execution
         """
-        tool = self.get_tool(tool_name)
+        tool = self.get_tool(name)
         if not tool:
-            return ToolResult.error_result(f"Tool not found: {tool_name}")
+            return ToolResult.error_result(f"Tool '{name}' not found")
         
-        return tool.execute(**kwargs)
+        # Check if tool has pre-execution capabilities
+        if hasattr(tool, 'pre_execute') and callable(getattr(tool, 'pre_execute')):
+            modified_kwargs = tool.pre_execute(**kwargs)
+            if modified_kwargs is not None:
+                kwargs = modified_kwargs
+        
+        # Execute the tool
+        result = tool.execute(**kwargs)
+        
+        # Check if tool has post-execution capabilities
+        if hasattr(tool, 'post_execute') and callable(getattr(tool, 'post_execute')):
+            modified_result = tool.post_execute(result, **kwargs)
+            if modified_result is not None:
+                result = modified_result
+        
+        return result
     
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert the tool registry to a dictionary."""
+    def find_error_handler(self, error_message: str) -> Optional[Dict[str, Any]]:
+        """
+        Find a tool that can handle a specific error pattern.
+        
+        Args:
+            error_message: The error message to find a handler for
+            
+        Returns:
+            Information about the error handler if found, None otherwise
+        """
+        if not error_message:
+            return None
+            
+        for pattern, handler_info in self._error_handlers.items():
+            if pattern in error_message:
+                return handler_info
+                
+        return None
+    
+    def create_recovery_step(self, error_message: str, failed_step: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Create a recovery step for a failed step based on registered error handlers.
+        
+        Args:
+            error_message: The error message from the failed step
+            failed_step: Information about the failed step
+            
+        Returns:
+            A recovery step if an appropriate handler is found, None otherwise
+        """
+        handler = self.find_error_handler(error_message)
+        if not handler:
+            return None
+            
+        recovery_tool = handler.get('tool')
+        arg_generator = handler.get('arg_generator')
+        
+        if not recovery_tool or not arg_generator:
+            return None
+            
+        # Generate arguments for the recovery step
+        recovery_args = arg_generator(error_message, failed_step)
+        
+        # Create the recovery step
         return {
-            "tools": {name: tool.to_dict() for name, tool in self.tools.items()}
+            'description': handler.get('description', f"Recover from error using {recovery_tool}"),
+            'tool_name': recovery_tool,
+            'tool_args': recovery_args
         }

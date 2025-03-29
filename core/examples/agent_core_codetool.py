@@ -1,5 +1,6 @@
 import sys
 import os
+import textwrap
 from pathlib import Path
 from dotenv import load_dotenv
 from datetime import datetime
@@ -95,5 +96,5 @@ if __name__ == "__main__":
     
     # # Example of processing the creative task (which could be done without tools)
     # print("\nEXECUTING CREATIVE TASK (with unnecessary tool usage):")
-    response = agent.process_message(creative_task)
+    response = agent.process_message(computational_task)
     print(f"Solution:\n{response}")

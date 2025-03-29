@@ -127,6 +127,34 @@ class PackageInstallerTool(Tool):
                 "description": "Information about the installed packages"
             }
         }
+    
+    def get_error_handlers(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Define the error patterns this tool can handle.
+        
+        Returns:
+            Dictionary mapping error patterns to handler information
+        """
+        def module_not_found_arg_generator(error_message: str, failed_step: Dict[str, Any]) -> Dict[str, Any]:
+            # Extract the module name from the error message
+            # Example error: "ModuleNotFoundError: No module named 'PIL'"
+            if "No module named" in error_message:
+                module_name = error_message.split("No module named ")[1].strip().strip("'\"")
+                return {"packages": [module_name], "upgrade": False}
+            return {"packages": ["unknown"], "upgrade": False}
+        
+        return {
+            "ModuleNotFoundError: No module named": {
+                "tool": "package_installer",
+                "description": "Install missing Python module",
+                "arg_generator": module_not_found_arg_generator
+            },
+            "ImportError: No module named": {
+                "tool": "package_installer",
+                "description": "Install missing Python module",
+                "arg_generator": module_not_found_arg_generator
+            }
+        }
 
 
 def check_module_installed(module_name: str) -> bool:
