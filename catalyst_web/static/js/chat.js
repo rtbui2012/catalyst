@@ -17,14 +17,24 @@ document.addEventListener('DOMContentLoaded', function() {
     // Chat state
     let isProcessing = false;
     let messageHistory = [];
-    let currentConversationId = generateId();
+    let currentConversationId = null;
+    let isEditing = false;
+    let currentEditId = null;
+    let savedConversations = [];
     
     // Initialize
     init();
     
     function init() {
-        // Fetch chat history from the server
-        fetchChatHistory();
+        // Load saved conversations from local storage
+        loadSavedConversations();
+        
+        // Create or load a conversation
+        if (!currentConversationId) {
+            startNewChat(false);
+        } else {
+            loadConversation(currentConversationId);
+        }
         
         // Add event listeners
         chatInput.addEventListener('input', handleInput);
@@ -32,10 +42,170 @@ document.addEventListener('DOMContentLoaded', function() {
         sendButton.addEventListener('click', sendMessage);
         clearChatButton.addEventListener('click', clearChat);
         exportChatButton.addEventListener('click', exportChat);
-        newChatButton.addEventListener('click', startNewChat);
+        newChatButton.addEventListener('click', () => startNewChat(true));
         
         // Auto-resize textarea as user types
         autoResizeTextarea(chatInput);
+    }
+    
+    // Function to load saved conversations from local storage
+    function loadSavedConversations() {
+        try {
+            const savedConvsJson = localStorage.getItem('catalyst_conversations');
+            if (savedConvsJson) {
+                savedConversations = JSON.parse(savedConvsJson);
+                
+                // Load last active conversation ID
+                currentConversationId = localStorage.getItem('catalyst_current_conversation');
+                
+                // Populate conversation list in sidebar
+                renderConversationList();
+            }
+        } catch (error) {
+            console.error('Error loading saved conversations:', error);
+            savedConversations = [];
+        }
+    }
+    
+    // Function to save conversations to local storage
+    function saveConversationsToLocalStorage() {
+        try {
+            localStorage.setItem('catalyst_conversations', JSON.stringify(savedConversations));
+            localStorage.setItem('catalyst_current_conversation', currentConversationId);
+        } catch (error) {
+            console.error('Error saving conversations to local storage:', error);
+        }
+    }
+    
+    // Function to render the conversation list in the sidebar
+    function renderConversationList() {
+        // Clear the list first
+        conversationList.innerHTML = '';
+        
+        if (savedConversations.length === 0) {
+            conversationList.innerHTML = '<div class="empty-state"><p>No conversations yet</p></div>';
+            return;
+        }
+        
+        // Sort conversations by last updated date (newest first)
+        const sortedConversations = [...savedConversations].sort((a, b) => 
+            new Date(b.updatedAt) - new Date(a.updatedAt)
+        );
+        
+        // Add each conversation to the list
+        sortedConversations.forEach(conversation => {
+            const itemDiv = document.createElement('div');
+            itemDiv.classList.add('conversation-item');
+            if (conversation.id === currentConversationId) {
+                itemDiv.classList.add('active');
+            }
+            itemDiv.dataset.id = conversation.id;
+            
+            itemDiv.innerHTML = `
+                <div class="conversation-title">${truncateText(conversation.title, 30)}</div>
+                <div class="conversation-date">${formatTime(new Date(conversation.updatedAt))}</div>
+                <button class="delete-conversation-btn" title="Delete conversation">
+                    <i class="fas fa-trash"></i>
+                </button>
+            `;
+            
+            // Add click handler to load the conversation
+            itemDiv.addEventListener('click', (e) => {
+                // Don't trigger if clicking the delete button
+                if (e.target.closest('.delete-conversation-btn')) return;
+                loadConversation(conversation.id);
+            });
+            
+            // Add delete button handler
+            const deleteBtn = itemDiv.querySelector('.delete-conversation-btn');
+            deleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                deleteConversation(conversation.id);
+            });
+            
+            conversationList.appendChild(itemDiv);
+        });
+    }
+    
+    // Function to save the current conversation
+    function saveCurrentConversation(title) {
+        if (!currentConversationId) return;
+        
+        // Find if this conversation already exists
+        const existingIndex = savedConversations.findIndex(c => c.id === currentConversationId);
+        
+        const conversationData = {
+            id: currentConversationId,
+            title: title || 'New Conversation',
+            messages: messageHistory,
+            createdAt: existingIndex >= 0 ? savedConversations[existingIndex].createdAt : new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        };
+        
+        if (existingIndex >= 0) {
+            // Update existing conversation
+            savedConversations[existingIndex] = conversationData;
+        } else {
+            // Add new conversation
+            savedConversations.push(conversationData);
+        }
+        
+        // Save to local storage
+        saveConversationsToLocalStorage();
+        
+        // Update the UI
+        renderConversationList();
+    }
+    
+    // Function to load a conversation
+    function loadConversation(conversationId) {
+        // Find the conversation
+        const conversation = savedConversations.find(c => c.id === conversationId);
+        if (!conversation) return;
+        
+        // Update current conversation ID
+        currentConversationId = conversationId;
+        
+        // Clear the current messages
+        while (chatMessages.children.length > 1) {
+            chatMessages.removeChild(chatMessages.lastChild);
+        }
+        
+        // Load messages from the conversation
+        messageHistory = [...conversation.messages];
+        
+        // Display messages
+        messageHistory.forEach(message => {
+            appendMessage(message.sender, message.content, message.id, message.reference_id, false);
+        });
+        
+        // Update active state in conversation list
+        document.querySelectorAll('.conversation-item').forEach(item => {
+            item.classList.toggle('active', item.dataset.id === conversationId);
+        });
+        
+        // Save current conversation ID to local storage
+        localStorage.setItem('catalyst_current_conversation', currentConversationId);
+        
+        // Scroll to bottom
+        scrollToBottom();
+    }
+    
+    // Function to delete a conversation
+    function deleteConversation(conversationId) {
+        // Remove from array
+        savedConversations = savedConversations.filter(c => c.id !== conversationId);
+        
+        // Save to local storage
+        saveConversationsToLocalStorage();
+        
+        // Update UI
+        renderConversationList();
+        
+        // If we deleted the current conversation, start a new one
+        if (currentConversationId === conversationId) {
+            startNewChat(false);
+        }
     }
     
     function handleInput(e) {
@@ -63,8 +233,10 @@ document.addEventListener('DOMContentLoaded', function() {
         const messageText = chatInput.value.trim();
         if (!messageText) return;
         
-        // Show user message
+        // Generate an ID for the user message
         const userMessageId = generateId();
+        
+        // Show user message
         appendMessage('user', messageText, userMessageId);
         
         // Clear input and disable button
@@ -72,18 +244,24 @@ document.addEventListener('DOMContentLoaded', function() {
         sendButton.setAttribute('disabled', 'disabled');
         chatInput.style.height = 'auto';
         
-        // Show typing indicator
+        // Show thinking bubble with typing indicator instead of the standalone indicator
         isProcessing = true;
-        typingIndicator.classList.add('active');
+        
+        // Add a thinking message with the typing indicator
+        const thinkingMessageId = generateId();
+        appendThinkingMessage(thinkingMessageId, userMessageId);
         
         try {
-            // Send message to server
+            // Send message to server with the message ID
             const response = await fetch('/chat/send', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ message: messageText })
+                body: JSON.stringify({ 
+                    message: messageText,
+                    messageId: userMessageId
+                })
             });
             
             if (!response.ok) {
@@ -92,25 +270,64 @@ document.addEventListener('DOMContentLoaded', function() {
             
             const data = await response.json();
             
-            // Hide typing indicator
-            typingIndicator.classList.remove('active');
+            // Remove thinking message
+            removeThinkingMessage(thinkingMessageId);
             
             // Show AI response
             appendMessage('assistant', data.content, data.id, userMessageId);
             
-            // Update conversation list
-            updateConversationList(messageText);
+            // Save the conversation after new messages
+            const firstUserMessage = messageHistory.find(msg => msg.sender === 'user');
+            saveCurrentConversation(firstUserMessage ? firstUserMessage.content : 'New Conversation');
             
         } catch (error) {
             console.error('Error sending message:', error);
-            typingIndicator.classList.remove('active');
+            // Remove thinking message
+            removeThinkingMessage(thinkingMessageId);
             appendErrorMessage('Sorry, there was an error processing your request.');
         } finally {
             isProcessing = false;
         }
     }
     
-    function appendMessage(sender, content, messageId, referenceId = null) {
+    // New function to append a thinking message with typing indicator
+    function appendThinkingMessage(messageId, referenceId) {
+        const messageDiv = document.createElement('div');
+        messageDiv.classList.add('message', 'assistant', 'thinking');
+        messageDiv.dataset.id = messageId;
+        
+        if (referenceId) {
+            messageDiv.dataset.referenceId = referenceId;
+        }
+        
+        messageDiv.innerHTML = `
+            <div class="message-avatar">
+                <i class="fas fa-robot"></i>
+            </div>
+            <div class="message-content">
+                <div class="typing-indicator">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            </div>
+        `;
+        
+        chatMessages.appendChild(messageDiv);
+        
+        // Scroll to the new message
+        scrollToBottom();
+    }
+    
+    // Function to remove thinking message
+    function removeThinkingMessage(messageId) {
+        const thinkingMessage = document.querySelector(`.message[data-id="${messageId}"]`);
+        if (thinkingMessage) {
+            thinkingMessage.remove();
+        }
+    }
+    
+    function appendMessage(sender, content, messageId, referenceId = null, shouldSave = true) {
         const messageDiv = document.createElement('div');
         messageDiv.classList.add('message', sender);
         messageDiv.dataset.id = messageId;
@@ -119,14 +336,16 @@ document.addEventListener('DOMContentLoaded', function() {
             messageDiv.dataset.referenceId = referenceId;
         }
         
-        // Store message in history
-        messageHistory.push({
-            id: messageId,
-            sender: sender,
-            content: content,
-            timestamp: new Date().toISOString(),
-            reference_id: referenceId
-        });
+        // Store message in history if this is a new message
+        if (shouldSave) {
+            messageHistory.push({
+                id: messageId,
+                sender: sender,
+                content: content,
+                timestamp: new Date().toISOString(),
+                reference_id: referenceId
+            });
+        }
         
         // Create message content
         let formattedContent = content;
@@ -136,20 +355,212 @@ document.addEventListener('DOMContentLoaded', function() {
             formattedContent = formatMarkdown(content);
         }
         
+        // Add edit button only for user messages
+        const editButton = sender === 'user' ? 
+            `<button class="edit-message-btn" title="Edit message">
+                <i class="fas fa-edit"></i>
+            </button>` : '';
+        
         messageDiv.innerHTML = `
             <div class="message-avatar">
                 <i class="fas fa-${sender === 'user' ? 'user' : 'robot'}"></i>
             </div>
             <div class="message-content">
-                ${formattedContent}
+                <div class="message-text">${formattedContent}</div>
                 <div class="message-time">${formatTime(new Date())}</div>
+                ${editButton}
             </div>
         `;
+        
+        // Add event listener for edit button if this is a user message
+        if (sender === 'user') {
+            const editBtn = messageDiv.querySelector('.edit-message-btn');
+            editBtn.addEventListener('click', () => {
+                startEditingMessage(messageDiv, messageId, content);
+            });
+        }
         
         chatMessages.appendChild(messageDiv);
         
         // Scroll to the new message
         scrollToBottom();
+    }
+    
+    // New function to start editing a message
+    function startEditingMessage(messageElement, messageId, content) {
+        // Don't allow editing if we're already processing a message
+        if (isProcessing) return;
+        
+        isEditing = true;
+        currentEditId = messageId;
+        
+        // Get the message text container
+        const messageTextContainer = messageElement.querySelector('.message-text');
+        const originalContent = content;
+        
+        // Replace the message content with an editable textarea
+        messageElement.classList.add('editing');
+        messageTextContainer.innerHTML = `
+            <textarea class="edit-message-textarea">${originalContent}</textarea>
+            <div class="edit-actions">
+                <button class="save-edit-btn" title="Save edit">
+                    <i class="fas fa-check"></i>
+                </button>
+                <button class="cancel-edit-btn" title="Cancel edit">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        `;
+        
+        // Get the textarea and focus it
+        const textarea = messageTextContainer.querySelector('.edit-message-textarea');
+        textarea.focus();
+        
+        // Add padding at the bottom of the textarea to make room for the buttons
+        textarea.style.paddingBottom = '32px';
+        
+        // Position the cursor at the end of the text
+        textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
+        
+        // Add event listeners for saving and canceling edit
+        const saveBtn = messageTextContainer.querySelector('.save-edit-btn');
+        const cancelBtn = messageTextContainer.querySelector('.cancel-edit-btn');
+        
+        // Handle Enter key to save
+        textarea.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                saveEdit(messageElement, messageId, textarea.value);
+            } else if (e.key === 'Escape') {
+                cancelEdit(messageElement, originalContent);
+            }
+        });
+        
+        saveBtn.addEventListener('click', () => {
+            saveEdit(messageElement, messageId, textarea.value);
+        });
+        
+        cancelBtn.addEventListener('click', () => {
+            cancelEdit(messageElement, originalContent);
+        });
+    }
+    
+    // Improved function to save edited message
+    function saveEdit(messageElement, messageId, newContent) {
+        // If content is empty or unchanged, just cancel
+        if (!newContent.trim()) {
+            cancelEdit(messageElement, newContent);
+            return;
+        }
+        
+        // Find the index of this message in history
+        const messageIndex = messageHistory.findIndex(msg => msg.id === messageId);
+        if (messageIndex === -1) return;
+        
+        // Update the message content in memory
+        const originalContent = messageHistory[messageIndex].content;
+        
+        // If content didn't change, just cancel edit
+        if (originalContent === newContent) {
+            cancelEdit(messageElement, originalContent);
+            return;
+        }
+        
+        // Update the message in the history
+        messageHistory[messageIndex].content = newContent;
+        
+        // Finish editing mode
+        isEditing = false;
+        
+        // Get the text container
+        const messageTextContainer = messageElement.querySelector('.message-text');
+        messageElement.classList.remove('editing');
+        messageTextContainer.innerHTML = newContent;
+        
+        // Find the next message (the bot response)
+        const nextMessage = document.querySelector(`.message[data-reference-id="${messageId}"]`);
+        
+        if (nextMessage) {
+            // Remove all messages after this response
+            let currentElement = nextMessage;
+            while (currentElement) {
+                const nextEl = currentElement.nextElementSibling;
+                currentElement.remove();
+                currentElement = nextEl;
+            }
+            
+            // Also remove those messages from history
+            const responseIndex = messageHistory.findIndex(msg => msg.id === nextMessage.dataset.id);
+            if (responseIndex !== -1) {
+                messageHistory = messageHistory.slice(0, responseIndex);
+            }
+            
+            // Save the current conversation state
+            const firstUserMessage = messageHistory.find(msg => msg.sender === 'user');
+            saveCurrentConversation(firstUserMessage ? firstUserMessage.content : 'New Conversation');
+            
+            // Add a typing indicator to show we're processing
+            typingIndicator.classList.add('active');
+            isProcessing = true;
+            
+            // Send the edited message to the backend
+            reSendEditedMessage(newContent, messageId);
+        }
+    }
+    
+    // New function to cancel editing
+    function cancelEdit(messageElement, originalContent) {
+        isEditing = false;
+        currentEditId = null;
+        
+        // Get the text container
+        const messageTextContainer = messageElement.querySelector('.message-text');
+        messageElement.classList.remove('editing');
+        messageTextContainer.innerHTML = originalContent;
+    }
+    
+    // New function to resend the edited message to the backend
+    async function reSendEditedMessage(messageText, messageId) {
+        try {
+            // Add a thinking message with the typing indicator
+            const thinkingMessageId = generateId();
+            appendThinkingMessage(thinkingMessageId, messageId);
+            
+            // Send message to server
+            const response = await fetch('/chat/edit', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ 
+                    message: messageText,
+                    messageId: messageId
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to get response');
+            }
+            
+            const data = await response.json();
+            
+            // Remove thinking message
+            removeThinkingMessage(thinkingMessageId);
+            
+            // Show AI response
+            appendMessage('assistant', data.content, data.id, messageId);
+            
+            // Save the conversation after the edit
+            const firstUserMessage = messageHistory.find(msg => msg.sender === 'user');
+            saveCurrentConversation(firstUserMessage ? firstUserMessage.content : 'New Conversation');
+            
+        } catch (error) {
+            console.error('Error sending edited message:', error);
+            removeThinkingMessage(thinkingMessageId);
+            appendErrorMessage('Sorry, there was an error processing your edited message.');
+        } finally {
+            isProcessing = false;
+        }
     }
     
     function appendErrorMessage(errorText) {
@@ -194,8 +605,11 @@ document.addEventListener('DOMContentLoaded', function() {
             // Clear message history
             messageHistory = [];
             
-            // Start a new conversation
-            currentConversationId = generateId();
+            // Save the cleared state
+            saveCurrentConversation('New Conversation');
+            
+            // Focus on input
+            chatInput.focus();
         }
     }
     
@@ -225,26 +639,40 @@ document.addEventListener('DOMContentLoaded', function() {
         URL.revokeObjectURL(url);
     }
     
-    function startNewChat() {
-        // Clear the chat interface
-        while (chatMessages.children.length > 1) {
-            chatMessages.removeChild(chatMessages.lastChild);
+    function startNewChat(shouldSwitchToNew = true) {
+        // If we should switch to new chat (not just initializing)
+        if (shouldSwitchToNew) {
+            // Save the current conversation first if it has messages
+            if (messageHistory.length > 0) {
+                const firstUserMessage = messageHistory.find(msg => msg.sender === 'user');
+                saveCurrentConversation(firstUserMessage ? firstUserMessage.content : 'New Conversation');
+            }
+            
+            // Clear the chat interface
+            while (chatMessages.children.length > 1) {
+                chatMessages.removeChild(chatMessages.lastChild);
+            }
+            
+            // Reset message history
+            messageHistory = [];
         }
         
         // Create new conversation ID
         currentConversationId = generateId();
         
-        // Reset message history
-        messageHistory = [];
-        
-        // Update conversation list
-        updateConversationList('New Conversation');
+        // Add this new conversation to the saved list
+        saveCurrentConversation('New Conversation');
         
         // Focus on input
         chatInput.focus();
     }
     
     async function fetchChatHistory() {
+        // Don't fetch from server if we have a conversation in local storage
+        if (savedConversations.length > 0 && currentConversationId) {
+            return;
+        }
+        
         try {
             const response = await fetch('/chat/history');
             if (!response.ok) {
@@ -263,68 +691,24 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Add messages from history
                 messageHistory = data;
                 
-                // Group messages by pairs (user query and assistant response)
+                // Display messages
                 for (let i = 0; i < data.length; i++) {
                     const message = data[i];
-                    appendMessage(message.sender, message.content, message.id, message.reference_id);
+                    appendMessage(message.sender, message.content, message.id, message.reference_id, false);
                 }
                 
-                // Update conversation list based on the first user message
+                // Create a new conversation in local storage
                 const firstUserMessage = data.find(msg => msg.sender === 'user');
-                if (firstUserMessage) {
-                    updateConversationList(firstUserMessage.content);
-                }
+                saveCurrentConversation(firstUserMessage ? firstUserMessage.content : 'Imported Conversation');
             }
         } catch (error) {
             console.error('Error fetching chat history:', error);
         }
     }
     
-    function updateConversationList(firstMessage) {
-        // Check if we already have this conversation in the list
-        const existingItem = document.querySelector(`.conversation-item[data-id="${currentConversationId}"]`);
-        
-        if (existingItem) {
-            // Update existing item
-            const titleElement = existingItem.querySelector('.conversation-title');
-            if (titleElement) {
-                titleElement.textContent = truncateText(firstMessage, 30);
-            }
-            
-            const dateElement = existingItem.querySelector('.conversation-date');
-            if (dateElement) {
-                dateElement.textContent = formatTime(new Date());
-            }
-        } else {
-            // Create new item
-            const emptyState = conversationList.querySelector('.empty-state');
-            if (emptyState) {
-                emptyState.remove();
-            }
-            
-            const itemDiv = document.createElement('div');
-            itemDiv.classList.add('conversation-item');
-            itemDiv.dataset.id = currentConversationId;
-            
-            itemDiv.innerHTML = `
-                <div class="conversation-title">${truncateText(firstMessage, 30)}</div>
-                <div class="conversation-date">${formatTime(new Date())}</div>
-            `;
-            
-            // Add click handler
-            itemDiv.addEventListener('click', () => {
-                // In a real app, this would load the conversation
-                alert('In a fully implemented app, this would load the selected conversation.');
-            });
-            
-            // Add to conversation list
-            conversationList.insertBefore(itemDiv, conversationList.firstChild);
-        }
-    }
-    
     // Utility functions
     function generateId() {
-        return 'msg_' + Math.random().toString(36).substr(2, 9);
+        return 'conv_' + Math.random().toString(36).substr(2, 9);
     }
     
     function formatTime(date) {

@@ -166,15 +166,11 @@ class LLMManager:
             Your job is to analyze a goal and create a plan to accomplish it using available tools.
             Each step should be clear, specific, and actionable.
 
-            IMPORTANT: Only use tools when absolutely necessary. Many tasks can be accomplished 
-            directly through your language capabilities. For example:
+            Many tasks can be accomplished directly through your language capabilities requiring no tools.
+            For example:
             - Use tools for: calculations, file operations, code execution, data processing, web searches for current information
             - Don't use tools for: conceptual explanations, creative writing, giving explanations about timeless concepts, or 
             other tasks that require just language generation
-
-            For questions about current events, recent developments, or time-sensitive information
-            (sports results, current market data, recent news, etc.), ALWAYS use the web_search tool
-            to ensure the information is accurate and up-to-date.
 
             When using tools, you MUST use the EXACT parameter names as specified in the tool schemas.
             Do not invent or rename parameters. For example, if a tool requires parameters named 'a' and 'b',
@@ -241,6 +237,8 @@ class LLMManager:
               "reasoning": "This is a creative writing task that can be accomplished through language generation without any external tools."
             }}
         """)
+
+        self.logger.info(f"User message for planning: {user_message}")
         
         # Generate a plan using the LLM
         self.logger.info(f"Generating plan for goal: {goal}")

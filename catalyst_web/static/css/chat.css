@@ -62,6 +62,9 @@
   margin-bottom: var(--spacing-sm);
   cursor: pointer;
   transition: background-color var(--transition-fast);
+  position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
 .conversation-item:hover {
@@ -71,6 +74,7 @@
 .conversation-item.active {
   background-color: var(--gray-200);
   font-weight: 500;
+  border-left: 3px solid var(--primary-color);
 }
 
 .conversation-title {
@@ -83,6 +87,33 @@
 .conversation-date {
   font-size: 0.75rem;
   color: var(--gray-600);
+}
+
+.delete-conversation-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: var(--gray-500);
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+}
+
+.conversation-item:hover .delete-conversation-btn {
+  opacity: 1;
+}
+
+.delete-conversation-btn:hover {
+  background-color: var(--gray-300);
+  color: var(--danger-color);
 }
 
 .empty-state {
@@ -209,6 +240,7 @@
   background-color: var(--primary-color);
   color: white;
   border-top-right-radius: 0;
+  padding-right: 36px; /* Added padding to make space for the edit icon */
 }
 
 .message.assistant .message-content {
@@ -352,10 +384,95 @@
   cursor: not-allowed;
 }
 
+/* Edit message functionality */
+.edit-message-btn {
+  position: absolute;
+  top: 8px;
+  right: 6px;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  padding: 4px;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s ease, background-color 0.2s ease;
+  cursor: pointer;
+}
+
+.message.user:hover .edit-message-btn {
+  opacity: 1;
+}
+
+.edit-message-btn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.message.editing .message-content {
+  padding: var(--spacing-sm);
+}
+
+.edit-message-textarea {
+  width: 100%;
+  border: none;
+  background-color: rgba(255, 255, 255, 0.1);
+  color: white;
+  border-radius: var(--border-radius-sm);
+  padding: var(--spacing-sm);
+  font-family: var(--font-family);
+  resize: vertical;
+  min-height: 60px;
+  outline: none;
+}
+
+.edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-xs);
+  margin-top: var(--spacing-xs);
+  position: absolute;
+  bottom: 8px;
+  left: 8px; /* Changed from right: 8px to left: 8px */
+}
+
+.save-edit-btn, .cancel-edit-btn {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  padding: var(--spacing-xs);
+  border-radius: var(--border-radius-sm);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px; /* Smaller size (was 28px) */
+  height: 24px; /* Smaller size (was 28px) */
+  transition: background-color 0.2s ease;
+}
+
+.save-edit-btn:hover {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+.cancel-edit-btn:hover {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
 /* Typing indicator */
 .typing-indicator {
-  display: none;
+  display: flex;
   padding: var(--spacing-xs) var(--spacing-sm);
+  margin: 0;
+  align-items: center;
+}
+
+.typing-indicator.standalone {
+  display: none;
   position: absolute;
   bottom: calc(var(--spacing-md) * 2 + 40px);
   left: var(--spacing-md);
@@ -365,8 +482,13 @@
   border: 1px solid var(--gray-200);
 }
 
-.typing-indicator.active {
+.typing-indicator.standalone.active {
   display: flex;
+}
+
+.message.thinking .message-content {
+  min-width: 60px;
+  min-height: 24px;
 }
 
 .typing-indicator span {

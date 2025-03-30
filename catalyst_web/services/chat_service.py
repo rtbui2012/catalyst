@@ -24,7 +24,6 @@ class ChatService:
     def __init__(self):
         """Initialize the chat service."""
         self.agent = None
-        self.sessions = {}
         
         # Initialize the Catalyst Core agent if available
         try:
@@ -34,46 +33,19 @@ class ChatService:
         except Exception as e:
             logger.error(f"Failed to initialize Catalyst Core agent: {str(e)}")
     
-    def get_or_create_session(self, user_id: str) -> Dict:
-        """Get an existing session or create a new one."""
-        if user_id not in self.sessions:
-            self.sessions[user_id] = {
-                'id': str(uuid.uuid4()),
-                'created_at': datetime.now().isoformat(),
-                'messages': []
-            }
+    def process_message(self, message_content: str, message_id: str = None) -> Dict:
+        """Process a user message and generate a response.
         
-        return self.sessions[user_id]
-    
-    def add_message(self, user_id: str, sender: str, content: str) -> Dict:
-        """Add a message to a user's session."""
-        session = self.get_or_create_session(user_id)
+        This is now stateless and doesn't maintain conversation history server-side,
+        as history is managed in the client's local storage.
         
-        message = {
-            'id': str(uuid.uuid4()),
-            'sender': sender,
-            'content': content,
-            'timestamp': datetime.now().isoformat()
-        }
-        
-        session['messages'].append(message)
-        return message
-    
-    def get_message_history(self, user_id: str) -> List[Dict]:
-        """Get the message history for a user."""
-        session = self.get_or_create_session(user_id)
-        return session['messages']
-    
-    def clear_history(self, user_id: str) -> None:
-        """Clear the message history for a user."""
-        if user_id in self.sessions:
-            self.sessions[user_id]['messages'] = []
-    
-    def process_message(self, user_id: str, message_content: str) -> Dict:
-        """Process a user message and generate a response."""
-        # Add the user message to history
-        user_message = self.add_message(user_id, 'user', message_content)
-        
+        Args:
+            message_content: The content of the user's message
+            message_id: Optional ID of the message, used for referencing edited messages
+            
+        Returns:
+            Dict containing the response message
+        """
         # Use the Catalyst Core agent if available
         if self.agent:
             try:
@@ -100,13 +72,21 @@ class ChatService:
             else:
                 response_content = "I received your message. Once fully integrated with the Catalyst Core, I'll process this more intelligently."
         
-        # Add the response to history
-        assistant_message = self.add_message(user_id, 'assistant', response_content)
-        assistant_message['reference_id'] = user_message['id']  # Link the response to the user message
+        # Create a response with a unique ID and reference to the original message
+        response = {
+            'id': str(uuid.uuid4()),
+            'sender': 'assistant',
+            'content': response_content,
+            'timestamp': datetime.now().isoformat()
+        }
         
-        return assistant_message
+        # If a message_id was provided, reference it
+        if message_id:
+            response['reference_id'] = message_id
+        
+        return response
     
-    def stream_response(self, user_id: str, message_content: str):
+    def stream_response(self, message_content: str):
         """Stream a response for a user message (to be implemented with SSE)."""
         # This method will be implemented in the future for streaming responses
         if self.agent and hasattr(self.agent, 'stream_response'):

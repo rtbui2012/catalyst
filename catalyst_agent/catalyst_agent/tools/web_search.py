@@ -24,7 +24,7 @@ class WebSearchTool(Tool):
     
     def __init__(self, 
                  name: str = "web_search", 
-                 description: str = "Search the web for information on a topic",
+                 description: str = "Search the web for information on a topic. Use this tool to find up-to-date information.",
                  api_key: Optional[str] = None,
                  search_engine: str = "google",
                  cx_id: Optional[str] = None,  # For Google Custom Search
