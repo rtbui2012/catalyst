@@ -1,182 +1,269 @@
 /**
  * Catalyst AI Web UI - Chat JavaScript
- * This file handles the chat interface functionality
+ * This file handles the chat interface functionality using a modular approach
  */
 
 document.addEventListener('DOMContentLoaded', function() {
-    // DOM elements
-    const chatInput = document.getElementById('chat-input');
-    const sendButton = document.getElementById('send-message');
-    const chatMessages = document.getElementById('chat-messages');
-    const typingIndicator = document.getElementById('typing-indicator');
-    const clearChatButton = document.getElementById('clear-chat');
-    const exportChatButton = document.getElementById('export-chat');
-    const newChatButton = document.getElementById('new-chat');
-    const conversationList = document.getElementById('conversation-list');
-    
-    // Chat state
-    let isProcessing = false;
-    let messageHistory = [];
-    let currentConversationId = null;
-    let isEditing = false;
-    let currentEditId = null;
-    let savedConversations = [];
-    
-    // Initialize
-    init();
-    
-    function init() {
-        // Load saved conversations from local storage
-        loadSavedConversations();
+    // Initialize the chat application
+    const chatApp = new CatalystChat();
+    chatApp.initialize();
+});
+
+/**
+ * CatalystChat - Main application class
+ * Handles the chat interface and conversation management
+ */
+class CatalystChat {
+    constructor() {
+        // DOM elements
+        this.elements = {
+            chatInput: document.getElementById('chat-input'),
+            sendButton: document.getElementById('send-message'),
+            chatMessages: document.getElementById('chat-messages'),
+            clearChatButton: document.getElementById('clear-chat'),
+            exportChatButton: document.getElementById('export-chat'),
+            newChatButton: document.getElementById('new-chat'),
+            conversationList: document.getElementById('conversation-list')
+        };
         
-        // Create or load a conversation
-        if (!currentConversationId) {
-            startNewChat(false);
-        } else {
-            loadConversation(currentConversationId);
-        }
-        
-        // Add event listeners
-        chatInput.addEventListener('input', handleInput);
-        chatInput.addEventListener('keydown', handleKeyDown);
-        sendButton.addEventListener('click', sendMessage);
-        clearChatButton.addEventListener('click', clearChat);
-        exportChatButton.addEventListener('click', exportChat);
-        newChatButton.addEventListener('click', () => startNewChat(true));
-        
-        // Auto-resize textarea as user types
-        autoResizeTextarea(chatInput);
+        // Chat state
+        this.state = {
+            isProcessing: false,
+            messageHistory: [],
+            currentConversationId: null,
+            currentTitle: null,
+            currentIcon: null,
+            isEditing: false,
+            currentEditId: null,
+            savedConversations: []
+        };
     }
     
-    // Function to load saved conversations from local storage
-    function loadSavedConversations() {
+    /**
+     * Initialize the chat application
+     */
+    initialize() {
+        // Load saved conversations from local storage
+        this.loadSavedConversations();
+        
+        // Create or load a conversation
+        if (!this.state.currentConversationId) {
+            this.startNewChat(false);
+        } else {
+            this.loadConversation(this.state.currentConversationId);
+        }
+        
+        // Set up event listeners
+        this.setupEventListeners();
+        
+        // Auto-resize textarea as user types
+        this.autoResizeTextarea(this.elements.chatInput);
+    }
+    
+    /**
+     * Set up all event listeners
+     */
+    setupEventListeners() {
+        // Input and message sending
+        this.elements.chatInput.addEventListener('input', this.handleInput.bind(this));
+        this.elements.chatInput.addEventListener('keydown', this.handleKeyDown.bind(this));
+        this.elements.sendButton.addEventListener('click', this.sendMessage.bind(this));
+        
+        // Button actions
+        this.elements.clearChatButton.addEventListener('click', this.clearChat.bind(this));
+        this.elements.exportChatButton.addEventListener('click', this.exportChat.bind(this));
+        this.elements.newChatButton.addEventListener('click', () => this.startNewChat(true));
+        
+        // Handle click outside when editing
+        document.addEventListener('click', (event) => {
+            if (!this.state.isEditing) return;
+            
+            const editingMessage = document.querySelector('.message.editing');
+            if (!editingMessage) return;
+            
+            // Check if the click was outside the editing message bubble
+            if (!editingMessage.contains(event.target)) {
+                const originalContent = this.state.messageHistory.find(
+                    msg => msg.id === this.state.currentEditId
+                )?.content;
+                
+                if (originalContent !== undefined) {
+                    this.cancelEdit(editingMessage, originalContent);
+                }
+            }
+        });
+    }
+    
+    /**
+     * Load saved conversations from local storage
+     */
+    loadSavedConversations() {
         try {
             const savedConvsJson = localStorage.getItem('catalyst_conversations');
             if (savedConvsJson) {
-                savedConversations = JSON.parse(savedConvsJson);
+                this.state.savedConversations = JSON.parse(savedConvsJson);
                 
                 // Load last active conversation ID
-                currentConversationId = localStorage.getItem('catalyst_current_conversation');
+                this.state.currentConversationId = localStorage.getItem('catalyst_current_conversation');
                 
                 // Populate conversation list in sidebar
-                renderConversationList();
+                this.renderConversationList();
             }
         } catch (error) {
             console.error('Error loading saved conversations:', error);
-            savedConversations = [];
+            this.state.savedConversations = [];
         }
     }
     
-    // Function to save conversations to local storage
-    function saveConversationsToLocalStorage() {
+    /**
+     * Save conversations to local storage
+     */
+    saveConversationsToLocalStorage() {
         try {
-            localStorage.setItem('catalyst_conversations', JSON.stringify(savedConversations));
-            localStorage.setItem('catalyst_current_conversation', currentConversationId);
+            localStorage.setItem('catalyst_conversations', JSON.stringify(this.state.savedConversations));
+            localStorage.setItem('catalyst_current_conversation', this.state.currentConversationId);
         } catch (error) {
             console.error('Error saving conversations to local storage:', error);
         }
     }
     
-    // Function to render the conversation list in the sidebar
-    function renderConversationList() {
+    /**
+     * Render the conversation list in the sidebar
+     */
+    renderConversationList() {
         // Clear the list first
-        conversationList.innerHTML = '';
-        
-        if (savedConversations.length === 0) {
-            conversationList.innerHTML = '<div class="empty-state"><p>No conversations yet</p></div>';
+        this.elements.conversationList.innerHTML = '';
+
+        if (this.state.savedConversations.length === 0) {
+            this.elements.conversationList.innerHTML = '<div class="empty-state"><p>No conversations yet</p></div>';
             return;
         }
-        
+
         // Sort conversations by last updated date (newest first)
-        const sortedConversations = [...savedConversations].sort((a, b) => 
+        const sortedConversations = [...this.state.savedConversations].sort((a, b) =>
             new Date(b.updatedAt) - new Date(a.updatedAt)
         );
-        
+
         // Add each conversation to the list
         sortedConversations.forEach(conversation => {
             const itemDiv = document.createElement('div');
             itemDiv.classList.add('conversation-item');
-            if (conversation.id === currentConversationId) {
+            if (conversation.id === this.state.currentConversationId) {
                 itemDiv.classList.add('active');
             }
             itemDiv.dataset.id = conversation.id;
-            
-            itemDiv.innerHTML = `
-                <div class="conversation-title">${truncateText(conversation.title, 30)}</div>
-                <div class="conversation-date">${formatTime(new Date(conversation.updatedAt))}</div>
+
+            // Extract the icon from the title if it exists
+            let displayTitle = conversation.title;
+            let iconHtml = '';
+
+            if (conversation.icon) {
+                iconHtml = `<span class="conversation-icon">${conversation.icon}</span>`;
+            } else {
+                const emojiMatch = conversation.title.match(/^(\p{Emoji})/u);
+                if (emojiMatch) {
+                    iconHtml = `<span class="conversation-icon">${emojiMatch[1]}</span>`;
+                    displayTitle = conversation.title.replace(/^\p{Emoji}/u, '').trim();
+                } else {
+                    iconHtml = '<span class="conversation-icon">💬</span>';
+                }
+            }
+
+            // Conditionally render delete button (hide if active conversation)
+            const deleteButtonHtml = conversation.id !== this.state.currentConversationId ? `
                 <button class="delete-conversation-btn" title="Delete conversation">
                     <i class="fas fa-trash"></i>
-                </button>
+                </button>` : '';
+
+            itemDiv.innerHTML = `
+                ${iconHtml}
+                <div class="conversation-content">
+                    <div class="conversation-title">${this.truncateText(displayTitle, 30)}</div>
+                    <div class="conversation-date">${this.formatTime(new Date(conversation.updatedAt))}</div>
+                </div>
+                ${deleteButtonHtml}
             `;
-            
+
             // Add click handler to load the conversation
             itemDiv.addEventListener('click', (e) => {
-                // Don't trigger if clicking the delete button
                 if (e.target.closest('.delete-conversation-btn')) return;
-                loadConversation(conversation.id);
+                this.loadConversation(conversation.id);
             });
-            
-            // Add delete button handler
+
+            // Add delete button handler if button exists
             const deleteBtn = itemDiv.querySelector('.delete-conversation-btn');
-            deleteBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                deleteConversation(conversation.id);
-            });
-            
-            conversationList.appendChild(itemDiv);
+            if (deleteBtn) {
+                deleteBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.deleteConversation(conversation.id);
+                });
+            }
+
+            this.elements.conversationList.appendChild(itemDiv);
         });
     }
     
-    // Function to save the current conversation
-    function saveCurrentConversation(title) {
-        if (!currentConversationId) return;
+    /**
+     * Save the current conversation
+     */
+    saveCurrentConversation() {
+        if (!this.state.currentConversationId) return;
         
         // Find if this conversation already exists
-        const existingIndex = savedConversations.findIndex(c => c.id === currentConversationId);
+        const existingIndex = this.state.savedConversations.findIndex(
+            c => c.id === this.state.currentConversationId
+        );
         
         const conversationData = {
-            id: currentConversationId,
-            title: title || 'New Conversation',
-            messages: messageHistory,
-            createdAt: existingIndex >= 0 ? savedConversations[existingIndex].createdAt : new Date().toISOString(),
+            id: this.state.currentConversationId,
+            title: this.state.currentTitle || 'New Conversation',
+            icon: this.state.currentIcon || '💬',
+            messages: this.state.messageHistory,
+            createdAt: existingIndex >= 0 ? 
+                this.state.savedConversations[existingIndex].createdAt : 
+                new Date().toISOString(),
             updatedAt: new Date().toISOString()
         };
+
+        console.log('Saving conversation:', conversationData);
         
         if (existingIndex >= 0) {
             // Update existing conversation
-            savedConversations[existingIndex] = conversationData;
+            this.state.savedConversations[existingIndex] = conversationData;
         } else {
             // Add new conversation
-            savedConversations.push(conversationData);
+            this.state.savedConversations.push(conversationData);
         }
         
         // Save to local storage
-        saveConversationsToLocalStorage();
+        this.saveConversationsToLocalStorage();
         
         // Update the UI
-        renderConversationList();
+        this.renderConversationList();
     }
     
-    // Function to load a conversation
-    function loadConversation(conversationId) {
+    /**
+     * Load a conversation by ID
+     */
+    loadConversation(conversationId) {
         // Find the conversation
-        const conversation = savedConversations.find(c => c.id === conversationId);
+        const conversation = this.state.savedConversations.find(c => c.id === conversationId);
         if (!conversation) return;
         
         // Update current conversation ID
-        currentConversationId = conversationId;
+        this.state.currentConversationId = conversationId;
         
         // Clear the current messages
-        while (chatMessages.children.length > 1) {
-            chatMessages.removeChild(chatMessages.lastChild);
+        while (this.elements.chatMessages.children.length > 1) {
+            this.elements.chatMessages.removeChild(this.elements.chatMessages.lastChild);
         }
         
         // Load messages from the conversation
-        messageHistory = [...conversation.messages];
+        this.state.messageHistory = [...conversation.messages];
         
         // Display messages
-        messageHistory.forEach(message => {
-            appendMessage(message.sender, message.content, message.id, message.reference_id, false);
+        this.state.messageHistory.forEach(message => {
+            this.appendMessage(message.sender, message.content, message.id, message.reference_id, false);
         });
         
         // Update active state in conversation list
@@ -185,113 +272,176 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         
         // Save current conversation ID to local storage
-        localStorage.setItem('catalyst_current_conversation', currentConversationId);
+        localStorage.setItem('catalyst_current_conversation', this.state.currentConversationId);
         
         // Scroll to bottom
-        scrollToBottom();
+        this.scrollToBottom();
     }
     
-    // Function to delete a conversation
-    function deleteConversation(conversationId) {
+    /**
+     * Delete a conversation by ID
+     */
+    deleteConversation(conversationId) {
         // Remove from array
-        savedConversations = savedConversations.filter(c => c.id !== conversationId);
+        this.state.savedConversations = this.state.savedConversations.filter(
+            c => c.id !== conversationId
+        );
         
         // Save to local storage
-        saveConversationsToLocalStorage();
+        this.saveConversationsToLocalStorage();
         
         // Update UI
-        renderConversationList();
+        this.renderConversationList();
         
         // If we deleted the current conversation, start a new one
-        if (currentConversationId === conversationId) {
-            startNewChat(false);
+        if (this.state.currentConversationId === conversationId) {
+            this.startNewChat(false);
         }
     }
     
-    function handleInput(e) {
+    /**
+     * Handle input event on chat input
+     */
+    handleInput(e) {
         // Enable/disable send button based on input
-        if (chatInput.value.trim().length > 0) {
-            sendButton.removeAttribute('disabled');
+        if (this.elements.chatInput.value.trim().length > 0) {
+            this.elements.sendButton.removeAttribute('disabled');
         } else {
-            sendButton.setAttribute('disabled', 'disabled');
+            this.elements.sendButton.setAttribute('disabled', 'disabled');
         }
     }
     
-    function handleKeyDown(e) {
+    /**
+     * Handle keydown event on chat input
+     */
+    handleKeyDown(e) {
         // Send message on Enter key (without Shift)
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
-            if (!sendButton.hasAttribute('disabled') && !isProcessing) {
-                sendMessage();
+            if (!this.elements.sendButton.hasAttribute('disabled') && !this.state.isProcessing) {
+                this.sendMessage();
             }
         }
     }
     
-    async function sendMessage() {
-        if (isProcessing) return;
-        
-        const messageText = chatInput.value.trim();
+    /**
+     * Send a message to the AI
+     */
+    async sendMessage() {
+        if (this.state.isProcessing) return;
+
+        const messageText = this.elements.chatInput.value.trim();
         if (!messageText) return;
-        
-        // Generate an ID for the user message
-        const userMessageId = generateId();
-        
-        // Show user message
-        appendMessage('user', messageText, userMessageId);
-        
-        // Clear input and disable button
-        chatInput.value = '';
-        sendButton.setAttribute('disabled', 'disabled');
-        chatInput.style.height = 'auto';
-        
-        // Show thinking bubble with typing indicator instead of the standalone indicator
-        isProcessing = true;
-        
-        // Add a thinking message with the typing indicator
-        const thinkingMessageId = generateId();
-        appendThinkingMessage(thinkingMessageId, userMessageId);
-        
+
+        const userMessageId = this.generateId();
+        this.appendMessage('user', messageText, userMessageId);
+
+        this.elements.chatInput.value = '';
+        this.elements.sendButton.setAttribute('disabled', 'disabled');
+        this.elements.chatInput.style.height = 'auto';
+
+        this.state.isProcessing = true;
+
+        const thinkingMessageId = this.generateId();
+        this.appendThinkingMessage(thinkingMessageId, userMessageId);
+
         try {
-            // Send message to server with the message ID
-            const response = await fetch('/chat/send', {
+            this.generateTitle(this.state.messageHistory.filter(msg => msg.sender === 'user'));
+
+            // Send message to get AI response
+            const messageResponse = await fetch('/chat/send', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
                     message: messageText,
-                    messageId: userMessageId
+                    messageId: userMessageId,
+                    conversation_history: this.state.messageHistory
                 })
             });
             
-            if (!response.ok) {
-                throw new Error('Failed to get response');
-            }
+            if (!messageResponse.ok) throw new Error('Failed to get response');
+            const messageData = await messageResponse.json();
             
-            const data = await response.json();
+            // Process message response
+            this.removeThinkingMessage(thinkingMessageId);
+            this.appendMessage('assistant', messageData.content, messageData.id, userMessageId);
             
-            // Remove thinking message
-            removeThinkingMessage(thinkingMessageId);
-            
-            // Show AI response
-            appendMessage('assistant', data.content, data.id, userMessageId);
-            
-            // Save the conversation after new messages
-            const firstUserMessage = messageHistory.find(msg => msg.sender === 'user');
-            saveCurrentConversation(firstUserMessage ? firstUserMessage.content : 'New Conversation');
-            
+            // Save conversation with current messages
+            this.saveCurrentConversation();
+
         } catch (error) {
             console.error('Error sending message:', error);
-            // Remove thinking message
-            removeThinkingMessage(thinkingMessageId);
-            appendErrorMessage('Sorry, there was an error processing your request.');
+            this.removeThinkingMessage(thinkingMessageId);
+            this.appendErrorMessage('Sorry, there was an error processing your request.');
         } finally {
-            isProcessing = false;
+            this.state.isProcessing = false;
         }
     }
     
-    // New function to append a thinking message with typing indicator
-    function appendThinkingMessage(messageId, referenceId) {
+    /**
+     * Generate a title for the conversation
+     */
+    async generateTitle(message_history) {
+        try {
+            const titleResponse = await fetch('/chat/generate_title', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(message_history)
+            });
+            
+            if (!titleResponse.ok) {
+                throw new Error(`Title generation failed: ${titleResponse.status} ${titleResponse.statusText}`);
+            }
+            
+            const titleData = await titleResponse.json();
+
+            console.log('Title generation response:', titleData);
+            
+            if (titleData && titleData.title) {
+                // Update the title in the saved conversations array
+                this.state.currentTitle = titleData.title;
+                this.state.currentIcon = titleData.icon || '💬';
+                const index = this.state.savedConversations.findIndex(
+                    c => c.id === this.state.currentConversationId
+                );
+                
+                console.log('Found conversation at index:', index, 'with ID:', this.state.currentConversationId);
+                
+                if (index !== -1) {
+                    const previousTitle = this.state.savedConversations[index].title;
+                    console.log('Previous title:', previousTitle);
+                    
+                    // Create a deep copy of the savedConversations array to trigger state update
+                    const updatedConversations = [...this.state.savedConversations];
+                    updatedConversations[index] = {
+                        ...updatedConversations[index],
+                        title: titleData.title,
+                        icon: titleData.icon,
+                        updatedAt: new Date().toISOString()
+                    };
+                    
+                    console.log('Updated conversation object:', updatedConversations[index]);
+                    
+                    // Replace the entire array
+                    this.state.savedConversations = updatedConversations;
+                    
+                    console.log('Updated title to:', this.state.savedConversations[index].title);
+                    
+                    this.saveCurrentConversation();
+                    
+                    // Force re-render the conversation list
+                    this.renderConversationList();
+                }
+            }
+        } catch (error) {
+            console.error('Error generating title:', error);
+        }
+    }
+    
+    /**
+     * Append a "thinking" indicator message
+     */
+    appendThinkingMessage(messageId, referenceId) {
         const messageDiv = document.createElement('div');
         messageDiv.classList.add('message', 'assistant', 'thinking');
         messageDiv.dataset.id = messageId;
@@ -313,21 +463,26 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
         `;
         
-        chatMessages.appendChild(messageDiv);
+        this.elements.chatMessages.appendChild(messageDiv);
         
         // Scroll to the new message
-        scrollToBottom();
+        this.scrollToBottom();
     }
     
-    // Function to remove thinking message
-    function removeThinkingMessage(messageId) {
+    /**
+     * Remove a thinking message by ID
+     */
+    removeThinkingMessage(messageId) {
         const thinkingMessage = document.querySelector(`.message[data-id="${messageId}"]`);
         if (thinkingMessage) {
             thinkingMessage.remove();
         }
     }
     
-    function appendMessage(sender, content, messageId, referenceId = null, shouldSave = true) {
+    /**
+     * Append a new message to the chat
+     */
+    appendMessage(sender, content, messageId, referenceId = null, shouldSave = true) {
         const messageDiv = document.createElement('div');
         messageDiv.classList.add('message', sender);
         messageDiv.dataset.id = messageId;
@@ -338,7 +493,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Store message in history if this is a new message
         if (shouldSave) {
-            messageHistory.push({
+            this.state.messageHistory.push({
                 id: messageId,
                 sender: sender,
                 content: content,
@@ -352,7 +507,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Format markdown content if it's from the assistant
         if (sender === 'assistant') {
-            formattedContent = formatMarkdown(content);
+            formattedContent = this.formatMarkdown(content);
         }
         
         // Add edit button only for user messages
@@ -361,14 +516,24 @@ document.addEventListener('DOMContentLoaded', function() {
                 <i class="fas fa-edit"></i>
             </button>` : '';
         
+        // Add copy button to all messages
+        const copyButton = `<button class="copy-message-btn" title="Copy message">
+            <i class="fas fa-copy"></i>
+        </button>`;
+        
         messageDiv.innerHTML = `
             <div class="message-avatar">
                 <i class="fas fa-${sender === 'user' ? 'user' : 'robot'}"></i>
             </div>
             <div class="message-content">
                 <div class="message-text">${formattedContent}</div>
-                <div class="message-time">${formatTime(new Date())}</div>
-                ${editButton}
+                <div class="message-footer">
+                    <div class="message-time">${this.formatTime(new Date())}</div>
+                    <div class="message-actions">
+                        ${copyButton}
+                        ${editButton}
+                    </div>
+                </div>
             </div>
         `;
         
@@ -376,30 +541,46 @@ document.addEventListener('DOMContentLoaded', function() {
         if (sender === 'user') {
             const editBtn = messageDiv.querySelector('.edit-message-btn');
             editBtn.addEventListener('click', () => {
-                startEditingMessage(messageDiv, messageId, content);
+                this.startEditingMessage(messageDiv, messageId, content);
             });
         }
         
-        chatMessages.appendChild(messageDiv);
+        // Add event listener for copy button
+        const copyBtn = messageDiv.querySelector('.copy-message-btn');
+        copyBtn.addEventListener('click', () => {
+            this.copyMessageToClipboard(messageDiv, content);
+        });
+        
+        this.elements.chatMessages.appendChild(messageDiv);
         
         // Scroll to the new message
-        scrollToBottom();
+        this.scrollToBottom();
     }
     
-    // New function to start editing a message
-    function startEditingMessage(messageElement, messageId, content) {
-        // Don't allow editing if we're already processing a message
-        if (isProcessing) return;
-        
-        isEditing = true;
-        currentEditId = messageId;
-        
-        // Get the message text container
+    /**
+     * Start editing a message
+     */
+    startEditingMessage(messageElement, messageId, content) {
+        if (this.state.isProcessing) return;
+
+        this.state.isEditing = true;
+        this.state.currentEditId = messageId;
+
         const messageTextContainer = messageElement.querySelector('.message-text');
+        const messageContentContainer = messageElement.querySelector('.message-content');
         const originalContent = content;
-        
-        // Replace the message content with an editable textarea
+
+        const originalWidth = messageContentContainer.offsetWidth;
+
         messageElement.classList.add('editing');
+        messageContentContainer.style.width = originalWidth + 'px';
+
+        // Hide copy and edit buttons during editing
+        const messageActions = messageElement.querySelector('.message-actions');
+        if (messageActions) {
+            messageActions.style.display = 'none';
+        }
+
         messageTextContainer.innerHTML = `
             <textarea class="edit-message-textarea">${originalContent}</textarea>
             <div class="edit-actions">
@@ -411,130 +592,120 @@ document.addEventListener('DOMContentLoaded', function() {
                 </button>
             </div>
         `;
-        
-        // Get the textarea and focus it
+
         const textarea = messageTextContainer.querySelector('.edit-message-textarea');
         textarea.focus();
-        
-        // Add padding at the bottom of the textarea to make room for the buttons
         textarea.style.paddingBottom = '32px';
-        
-        // Position the cursor at the end of the text
         textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
-        
-        // Add event listeners for saving and canceling edit
+
         const saveBtn = messageTextContainer.querySelector('.save-edit-btn');
         const cancelBtn = messageTextContainer.querySelector('.cancel-edit-btn');
-        
-        // Handle Enter key to save
-        textarea.addEventListener('keydown', function(e) {
+
+        textarea.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                saveEdit(messageElement, messageId, textarea.value);
+                this.saveEdit(messageElement, messageId, textarea.value);
             } else if (e.key === 'Escape') {
-                cancelEdit(messageElement, originalContent);
+                this.cancelEdit(messageElement, originalContent);
             }
         });
-        
+
         saveBtn.addEventListener('click', () => {
-            saveEdit(messageElement, messageId, textarea.value);
+            this.saveEdit(messageElement, messageId, textarea.value);
         });
-        
+
         cancelBtn.addEventListener('click', () => {
-            cancelEdit(messageElement, originalContent);
+            this.cancelEdit(messageElement, originalContent);
         });
     }
     
-    // Improved function to save edited message
-    function saveEdit(messageElement, messageId, newContent) {
-        // If content is empty or unchanged, just cancel
+    /**
+     * Cancel editing a message
+     */
+    cancelEdit(messageElement, originalContent) {
+        this.state.isEditing = false;
+        this.state.currentEditId = null;
+
+        const messageTextContainer = messageElement.querySelector('.message-text');
+        messageElement.classList.remove('editing');
+        messageTextContainer.innerHTML = originalContent;
+
+        const messageActions = messageElement.querySelector('.message-actions');
+        if (messageActions) {
+            messageActions.style.display = '';
+        }
+    }
+
+    /**
+     * Save an edited message
+     */
+    saveEdit(messageElement, messageId, newContent) {
         if (!newContent.trim()) {
-            cancelEdit(messageElement, newContent);
+            this.cancelEdit(messageElement, newContent);
             return;
         }
-        
-        // Find the index of this message in history
-        const messageIndex = messageHistory.findIndex(msg => msg.id === messageId);
+
+        const messageIndex = this.state.messageHistory.findIndex(msg => msg.id === messageId);
         if (messageIndex === -1) return;
-        
-        // Update the message content in memory
-        const originalContent = messageHistory[messageIndex].content;
-        
-        // If content didn't change, just cancel edit
-        if (originalContent === newContent) {
-            cancelEdit(messageElement, originalContent);
-            return;
-        }
-        
-        // Update the message in the history
-        messageHistory[messageIndex].content = newContent;
-        
-        // Finish editing mode
-        isEditing = false;
-        
-        // Get the text container
+
+        this.state.messageHistory[messageIndex].content = newContent;
+
+        this.state.isEditing = false;
+
         const messageTextContainer = messageElement.querySelector('.message-text');
         messageElement.classList.remove('editing');
         messageTextContainer.innerHTML = newContent;
-        
-        // Find the next message (the bot response)
+
+        const messageActions = messageElement.querySelector('.message-actions');
+        if (messageActions) {
+            messageActions.style.display = '';
+        }
+
         const nextMessage = document.querySelector(`.message[data-reference-id="${messageId}"]`);
-        
+
         if (nextMessage) {
-            // Remove all messages after this response
             let currentElement = nextMessage;
             while (currentElement) {
                 const nextEl = currentElement.nextElementSibling;
                 currentElement.remove();
                 currentElement = nextEl;
             }
-            
-            // Also remove those messages from history
-            const responseIndex = messageHistory.findIndex(msg => msg.id === nextMessage.dataset.id);
+
+            const responseIndex = this.state.messageHistory.findIndex(msg => msg.id === nextMessage.dataset.id);
             if (responseIndex !== -1) {
-                messageHistory = messageHistory.slice(0, responseIndex);
+                this.state.messageHistory = this.state.messageHistory.slice(0, responseIndex);
             }
-            
-            // Save the current conversation state
-            const firstUserMessage = messageHistory.find(msg => msg.sender === 'user');
-            saveCurrentConversation(firstUserMessage ? firstUserMessage.content : 'New Conversation');
-            
-            // Add a typing indicator to show we're processing
-            typingIndicator.classList.add('active');
-            isProcessing = true;
-            
-            // Send the edited message to the backend
-            reSendEditedMessage(newContent, messageId);
+
+            const firstUserMessage = this.state.messageHistory.find(msg => msg.sender === 'user');
+            this.saveCurrentConversation();
+
+            this.state.isProcessing = true;
+            this.reSendEditedMessage(newContent, messageId);
+        } else {
+            const firstUserMessage = this.state.messageHistory.find(msg => msg.sender === 'user');
+            this.saveCurrentConversation();
         }
     }
     
-    // New function to cancel editing
-    function cancelEdit(messageElement, originalContent) {
-        isEditing = false;
-        currentEditId = null;
-        
-        // Get the text container
-        const messageTextContainer = messageElement.querySelector('.message-text');
-        messageElement.classList.remove('editing');
-        messageTextContainer.innerHTML = originalContent;
-    }
-    
-    // New function to resend the edited message to the backend
-    async function reSendEditedMessage(messageText, messageId) {
+    /**
+     * Re-send an edited message to get updated response
+     */
+    async reSendEditedMessage(messageText, messageId) {
         try {
             // Add a thinking message with the typing indicator
-            const thinkingMessageId = generateId();
-            appendThinkingMessage(thinkingMessageId, messageId);
+            const thinkingMessageId = this.generateId();
+            this.appendThinkingMessage(thinkingMessageId, messageId);
             
-            // Send message to server
-            const response = await fetch('/chat/edit', {
+            // Send message to server with conversation history
+            const response = await fetch('/chat/send', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({ 
                     message: messageText,
-                    messageId: messageId
+                    messageId: messageId,
+                    conversation_history: this.state.messageHistory
                 })
             });
             
@@ -545,25 +716,29 @@ document.addEventListener('DOMContentLoaded', function() {
             const data = await response.json();
             
             // Remove thinking message
-            removeThinkingMessage(thinkingMessageId);
+            this.removeThinkingMessage(thinkingMessageId);
             
             // Show AI response
-            appendMessage('assistant', data.content, data.id, messageId);
+            this.appendMessage('assistant', data.content, data.id, messageId);
             
-            // Save the conversation after the edit
-            const firstUserMessage = messageHistory.find(msg => msg.sender === 'user');
-            saveCurrentConversation(firstUserMessage ? firstUserMessage.content : 'New Conversation');
+            // No need to generate title for edited messages
+            // Just save with the existing title
+            const firstUserMessage = this.state.messageHistory.find(msg => msg.sender === 'user');
+            this.saveCurrentConversation();
             
         } catch (error) {
             console.error('Error sending edited message:', error);
-            removeThinkingMessage(thinkingMessageId);
-            appendErrorMessage('Sorry, there was an error processing your edited message.');
+            this.removeThinkingMessage(thinkingMessageId);
+            this.appendErrorMessage('Sorry, there was an error processing your edited message.');
         } finally {
-            isProcessing = false;
+            this.state.isProcessing = false;
         }
     }
     
-    function appendErrorMessage(errorText) {
+    /**
+     * Append an error message to the chat
+     */
+    appendErrorMessage(errorText) {
         const errorDiv = document.createElement('div');
         errorDiv.classList.add('message', 'system', 'error');
         
@@ -573,11 +748,14 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
         `;
         
-        chatMessages.appendChild(errorDiv);
-        scrollToBottom();
+        this.elements.chatMessages.appendChild(errorDiv);
+        this.scrollToBottom();
     }
     
-    function formatMarkdown(text) {
+    /**
+     * Format markdown text to HTML
+     */
+    formatMarkdown(text) {
         // Use marked.js to convert markdown to HTML
         const htmlContent = marked.parse(text);
         
@@ -591,34 +769,43 @@ document.addEventListener('DOMContentLoaded', function() {
         return htmlContent;
     }
     
-    function scrollToBottom() {
-        chatMessages.scrollTop = chatMessages.scrollHeight;
+    /**
+     * Scroll the chat container to the bottom
+     */
+    scrollToBottom() {
+        this.elements.chatMessages.scrollTop = this.elements.chatMessages.scrollHeight;
     }
     
-    function clearChat() {
+    /**
+     * Clear the current chat
+     */
+    clearChat() {
         if (confirm('Are you sure you want to clear this conversation? This cannot be undone.')) {
             // Clear the chat messages (except the system greeting)
-            while (chatMessages.children.length > 1) {
-                chatMessages.removeChild(chatMessages.lastChild);
+            while (this.elements.chatMessages.children.length > 1) {
+                this.elements.chatMessages.removeChild(this.elements.chatMessages.lastChild);
             }
             
             // Clear message history
-            messageHistory = [];
+            this.state.messageHistory = [];
             
             // Save the cleared state
-            saveCurrentConversation('New Conversation');
+            this.saveCurrentConversation();
             
             // Focus on input
-            chatInput.focus();
+            this.elements.chatInput.focus();
         }
     }
     
-    function exportChat() {
+    /**
+     * Export the current chat as a JSON file
+     */
+    exportChat() {
         // Create exportable content
         const exportData = {
-            id: currentConversationId,
+            id: this.state.currentConversationId,
             timestamp: new Date().toISOString(),
-            messages: messageHistory
+            messages: this.state.messageHistory
         };
         
         // Convert to JSON string
@@ -630,7 +817,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         const a = document.createElement('a');
         a.href = url;
-        a.download = `catalyst-chat-${formatDateForFilename(new Date())}.json`;
+        a.download = `catalyst-chat-${this.formatDateForFilename(new Date())}.json`;
         document.body.appendChild(a);
         a.click();
         
@@ -639,115 +826,131 @@ document.addEventListener('DOMContentLoaded', function() {
         URL.revokeObjectURL(url);
     }
     
-    function startNewChat(shouldSwitchToNew = true) {
+    /**
+     * Start a new chat conversation
+     */
+    startNewChat(shouldSwitchToNew = true) {
         // If we should switch to new chat (not just initializing)
         if (shouldSwitchToNew) {
             // Save the current conversation first if it has messages
-            if (messageHistory.length > 0) {
-                const firstUserMessage = messageHistory.find(msg => msg.sender === 'user');
-                saveCurrentConversation(firstUserMessage ? firstUserMessage.content : 'New Conversation');
+            if (this.state.messageHistory.length > 0) {
+                const firstUserMessage = this.state.messageHistory.find(msg => msg.sender === 'user');
+                this.saveCurrentConversation();
             }
             
             // Clear the chat interface
-            while (chatMessages.children.length > 1) {
-                chatMessages.removeChild(chatMessages.lastChild);
+            while (this.elements.chatMessages.children.length > 1) {
+                this.elements.chatMessages.removeChild(this.elements.chatMessages.lastChild);
             }
             
             // Reset message history
-            messageHistory = [];
+            this.state.messageHistory = [];
         }
         
         // Create new conversation ID
-        currentConversationId = generateId();
+        this.state.currentConversationId = this.generateId();
+        this.state.currentTitle = "New Conversation";
         
         // Add this new conversation to the saved list
-        saveCurrentConversation('New Conversation');
+        this.saveCurrentConversation();
         
         // Focus on input
-        chatInput.focus();
+        this.elements.chatInput.focus();
     }
     
-    async function fetchChatHistory() {
-        // Don't fetch from server if we have a conversation in local storage
-        if (savedConversations.length > 0 && currentConversationId) {
-            return;
+    /**
+     * Copy message content to clipboard
+     */
+    copyMessageToClipboard(messageDiv, content) {
+        // For assistant messages, we need to get the plain text version of the HTML content
+        if (messageDiv.classList.contains('assistant')) {
+            // Create temporary element to extract text from HTML
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = content;
+            content = tempDiv.textContent || tempDiv.innerText || '';
         }
         
-        try {
-            const response = await fetch('/chat/history');
-            if (!response.ok) {
-                throw new Error('Failed to fetch chat history');
-            }
-            
-            const data = await response.json();
-            
-            // If we have history, display it
-            if (data && data.length > 0) {
-                // Clear the existing messages (except the system greeting)
-                while (chatMessages.children.length > 1) {
-                    chatMessages.removeChild(chatMessages.lastChild);
-                }
-                
-                // Add messages from history
-                messageHistory = data;
-                
-                // Display messages
-                for (let i = 0; i < data.length; i++) {
-                    const message = data[i];
-                    appendMessage(message.sender, message.content, message.id, message.reference_id, false);
-                }
-                
-                // Create a new conversation in local storage
-                const firstUserMessage = data.find(msg => msg.sender === 'user');
-                saveCurrentConversation(firstUserMessage ? firstUserMessage.content : 'Imported Conversation');
-            }
-        } catch (error) {
-            console.error('Error fetching chat history:', error);
+        // Use the clipboard API if available
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(content)
+                .then(() => {
+                    // Show a visual feedback for copy
+                    const copyBtn = messageDiv.querySelector('.copy-message-btn');
+                    const originalIcon = copyBtn.innerHTML;
+                    copyBtn.innerHTML = '<i class="fas fa-check"></i>';
+                    
+                    // Reset the icon after 2 seconds
+                    setTimeout(() => {
+                        copyBtn.innerHTML = originalIcon;
+                    }, 2000);
+                })
+                .catch(err => {
+                    console.error('Could not copy text: ', err);
+                    // Fallback to the older method
+                    this.copyWithExecCommand(content);
+                });
+        } else {
+            // Fallback for browsers that don't support clipboard API
+            this.copyWithExecCommand(content);
         }
     }
     
-    // Utility functions
-    function generateId() {
-        return 'conv_' + Math.random().toString(36).substr(2, 9);
+    /**
+     * Fallback method for copying text
+     */
+    copyWithExecCommand(text) {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';  // Prevent scrolling to the element
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+            document.execCommand('copy');
+            console.log('Text copied to clipboard');
+        } catch (err) {
+            console.error('Failed to copy text: ', err);
+        }
+        document.body.removeChild(textarea);
     }
     
-    function formatTime(date) {
-        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    }
-    
-    function formatDateForFilename(date) {
-        return date.toISOString().split('T')[0];
-    }
-    
-    function truncateText(text, maxLength) {
-        if (text.length <= maxLength) return text;
-        return text.substr(0, maxLength) + '...';
-    }
-    
-    function autoResizeTextarea(textarea) {
+    /**
+     * Auto-resize a textarea as the user types
+     */
+    autoResizeTextarea(textarea) {
         textarea.addEventListener('input', function() {
             this.style.height = 'auto';
             this.style.height = (this.scrollHeight) + 'px';
         });
     }
     
-    // Setup Server-Sent Events for streaming responses
-    function setupSSE() {
-        const evtSource = new EventSource('/chat/stream');
-        
-        evtSource.onmessage = function(event) {
-            const data = JSON.parse(event.data);
-            console.log('SSE message:', data);
-            // Here you would handle streamed responses
-            // This will be implemented in the future for streaming responses
-        };
-        
-        evtSource.onerror = function(err) {
-            console.error('SSE error:', err);
-            evtSource.close();
-        };
+    // Utility methods
+    
+    /**
+     * Generate a random ID
+     */
+    generateId() {
+        return 'conv_' + Math.random().toString(36).substr(2, 9);
     }
     
-    // Uncomment to enable SSE streaming when ready
-    // setupSSE();
-});
+    /**
+     * Format a date as time string
+     */
+    formatTime(date) {
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    
+    /**
+     * Format a date for filename
+     */
+    formatDateForFilename(date) {
+        return date.toISOString().split('T')[0];
+    }
+    
+    /**
+     * Truncate text with ellipsis
+     */
+    truncateText(text, maxLength) {
+        if (text.length <= maxLength) return text;
+        return text.substr(0, maxLength) + '...';
+    }
+}

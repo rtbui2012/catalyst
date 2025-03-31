@@ -166,8 +166,8 @@ class LLMManager:
             Your job is to analyze a goal and create a plan to accomplish it using available tools.
             Each step should be clear, specific, and actionable.
 
-            Many tasks can be accomplished directly through your language capabilities requiring no tools.
-            For example:
+            IMPORTANT: Only use tools when absolutely necessary. Many tasks can be accomplished 
+            directly through your language capabilities. For example:
             - Use tools for: calculations, file operations, code execution, data processing, web searches for current information
             - Don't use tools for: conceptual explanations, creative writing, giving explanations about timeless concepts, or 
             other tasks that require just language generation

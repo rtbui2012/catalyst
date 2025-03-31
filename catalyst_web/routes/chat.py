@@ -29,14 +29,23 @@ def send_message():
     data = request.json
     message = data.get('message', '').strip()
     message_id = data.get('messageId')
+    conversation_history = data.get('conversation_history', [])
     
     if not message:
         return jsonify({'error': 'Message cannot be empty'}), 400
     
     try:
-        # Process the message using the chat service without user ID
-        # since we're not storing chat history server-side anymore
+        # Process the message using the chat service
         response = chat_service.process_message(message, message_id)
+        
+        # Generate a conversation title if we have enough context now
+        if len(conversation_history) > 0:
+            # Add the current message to conversation history for title generation
+            conversation_with_new_msg = conversation_history + [
+                {'sender': 'user', 'content': message},
+                {'sender': 'assistant', 'content': response['content']}
+            ]
+            
         return jsonify(response)
         
     except Exception as e:
@@ -45,36 +54,6 @@ def send_message():
             'error': 'Failed to process message',
             'message': str(e)
         }), 500
-
-@chat_bp.route('/chat/edit', methods=['POST'])
-def edit_message():
-    """Process an edited message and get a new response."""
-    data = request.json
-    message = data.get('message', '').strip()
-    message_id = data.get('messageId')
-    
-    if not message:
-        return jsonify({'error': 'Message cannot be empty'}), 400
-    
-    try:
-        # Process the edited message
-        response = chat_service.process_message(message, message_id)
-        return jsonify(response)
-        
-    except Exception as e:
-        logger.error(f"Error processing edited message: {str(e)}")
-        return jsonify({
-            'error': 'Failed to process edited message',
-            'message': str(e)
-        }), 500
-
-@chat_bp.route('/chat/history')
-def get_history():
-    """
-    This endpoint is deprecated as history is now stored client-side.
-    Kept for backward compatibility but returns an empty list.
-    """
-    return jsonify([])
 
 @chat_bp.route('/chat/stream')
 def stream():
@@ -91,3 +70,31 @@ def stream():
             yield "data: " + jsonify(chunk).data.decode('utf-8') + "\n\n"
     
     return Response(generate(), mimetype='text/event-stream')
+
+@chat_bp.route('/chat/generate_title', methods=['POST'])
+def generate_title():
+    """Generate a title for a conversation based on its content."""
+
+    data = request.json
+
+    if not data:
+        logger.warning("No conversation history or message provided for title generation")
+        return jsonify({
+            'title': 'Unknown Conversation',
+            'icon': '💬'
+        })
+    
+    try:
+        # Generate a title based on the conversation history
+        title_data = chat_service.generate_conversation_title(data)
+        logger.info(f"Generated title: {title_data.get('title', 'unknown')}")
+        return jsonify(title_data)
+        
+    except Exception as e:
+        logger.error(f"Error generating conversation title: {str(e)}")
+        return jsonify({
+            'error': 'Failed to generate title',
+            'message': str(e),
+            'title': 'Unknown Topic',
+            'icon': '❓'
+        }), 500

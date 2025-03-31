@@ -16,7 +16,7 @@
 
 /* Sidebar styles */
 .chat-sidebar {
-  width: 280px;
+  width: 320px; /* Increased from 280px to make it wider */
   background-color: var(--gray-100);
   border-right: 1px solid var(--gray-200);
   display: flex;
@@ -64,7 +64,24 @@
   transition: background-color var(--transition-fast);
   position: relative;
   display: flex;
-  flex-direction: column;
+  flex-direction: row; /* Changed from column to row */
+  align-items: center; /* Align items vertically in the center */
+  gap: var(--spacing-sm); /* Add gap between icon and content */
+  padding-right: 36px; /* Extra padding for the delete button */
+}
+
+.conversation-icon {
+  font-size: 1.25rem; /* Size for the emoji icon */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0; /* Prevent the icon from shrinking */
+}
+
+.conversation-content {
+  flex: 1; /* Take up remaining space */
+  min-width: 0; /* Allow text truncation to work properly */
+  overflow: hidden; /* Needed for text-overflow to work */
 }
 
 .conversation-item:hover {
@@ -116,6 +133,43 @@
   color: var(--danger-color);
 }
 
+/* Position edit-actions at bottom-right during editing */
+.message.editing .edit-actions {
+    position: absolute;
+    bottom: 8px;
+    right: 8px; /* Changed from left to right */
+    display: flex;
+    gap: 4px;
+}
+
+/* Ensure message-content is positioned relatively to contain absolute elements */
+.message-content {
+    position: relative;
+}
+
+/* Style edit-action buttons */
+.edit-actions .save-edit-btn,
+.edit-actions .cancel-edit-btn {
+    background-color: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.8);
+    padding: 4px;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.edit-actions .save-edit-btn:hover,
+.edit-actions .cancel-edit-btn:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 1);
+}
+
 .empty-state {
   display: flex;
   align-items: center;
@@ -159,7 +213,7 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  max-width: calc(100% - 280px);
+  max-width: calc(100% - 320px); /* Updated to match the new sidebar width */
 }
 
 .chat-header {
@@ -234,13 +288,14 @@
   border-radius: var(--border-radius-md);
   background-color: var(--gray-100);
   position: relative;
+  min-width: 250px; /* Added minimum width */
+  padding-left: 24px; /* Add left padding */
 }
 
 .message.user .message-content {
   background-color: var(--primary-color);
   color: white;
   border-top-right-radius: 0;
-  padding-right: 36px; /* Added padding to make space for the edit icon */
 }
 
 .message.assistant .message-content {
@@ -259,57 +314,62 @@
   margin-bottom: 0;
 }
 
+/* Message footer with time and actions */
+.message-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: var(--spacing-xs);
+}
+
 .message-time {
   font-size: 0.75rem;
   color: var(--gray-500);
-  margin-top: var(--spacing-xs);
-  text-align: right;
+}
+
+.message-actions {
+  display: flex;
+  gap: 4px;
 }
 
 .message.user .message-time {
   color: rgba(255, 255, 255, 0.8);
 }
 
-/* Markdown content styling */
-.message-content pre {
-  background-color: var(--gray-900);
-  color: var(--gray-100);
-  padding: var(--spacing-md);
-  border-radius: var(--border-radius-sm);
-  overflow-x: auto;
-  margin: var(--spacing-md) 0;
+/* Copy button styling */
+.copy-message-btn {
+  background: transparent;
+  border: none;
+  color: var(--gray-500);
+  padding: 4px;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s ease, background-color 0.2s ease;
+  cursor: pointer;
 }
 
-.message.user .message-content pre {
-  background-color: rgba(0, 0, 0, 0.2);
+.message:hover .copy-message-btn {
+  opacity: 1;
 }
 
-.message-content code {
-  font-family: 'Courier New', Courier, monospace;
+.message.user .copy-message-btn {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.message.user .copy-message-btn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.message.assistant .copy-message-btn:hover {
   background-color: rgba(0, 0, 0, 0.05);
-  padding: 0.2em 0.4em;
-  border-radius: var(--border-radius-sm);
-  font-size: 0.85em;
+  color: var(--gray-700);
 }
-
-.message.user .message-content code {
-  background-color: rgba(255, 255, 255, 0.2);
-  color: white;
-}
-
-.message-content ul, .message-content ol {
-  margin-left: var(--spacing-lg);
-  margin-bottom: var(--spacing-md);
-}
-
-.message-content a {
-  text-decoration: underline;
-}
-
-.message.user .message-content a {
-  color: white;
-}
-
 /* Input area styles */
 .chat-input-container {
   padding: var(--spacing-md);
@@ -386,16 +446,13 @@
 
 /* Edit message functionality */
 .edit-message-btn {
-  position: absolute;
-  top: 8px;
-  right: 6px;
   background: transparent;
   border: none;
   color: rgba(255, 255, 255, 0.6);
   padding: 4px;
   border-radius: 50%;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -415,6 +472,10 @@
 
 .message.editing .message-content {
   padding: var(--spacing-sm);
+  min-height: 120px; /* Ensure sufficient height for editing */
+  box-shadow: 0 0 0 2px var(--primary-color); /* Add a highlight effect */
+  transition: min-height 0.2s ease, box-shadow 0.2s ease;
+  /* Width is now set inline by JavaScript */
 }
 
 .edit-message-textarea {
@@ -426,43 +487,9 @@
   padding: var(--spacing-sm);
   font-family: var(--font-family);
   resize: vertical;
-  min-height: 60px;
+  min-height: 90px; /* Increased from 60px */
   outline: none;
 }
-
-.edit-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--spacing-xs);
-  margin-top: var(--spacing-xs);
-  position: absolute;
-  bottom: 8px;
-  left: 8px; /* Changed from right: 8px to left: 8px */
-}
-
-.save-edit-btn, .cancel-edit-btn {
-  background: rgba(255, 255, 255, 0.2);
-  border: none;
-  color: white;
-  padding: var(--spacing-xs);
-  border-radius: var(--border-radius-sm);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px; /* Smaller size (was 28px) */
-  height: 24px; /* Smaller size (was 28px) */
-  transition: background-color 0.2s ease;
-}
-
-.save-edit-btn:hover {
-  background-color: rgba(255, 255, 255, 0.3);
-}
-
-.cancel-edit-btn:hover {
-  background-color: rgba(255, 255, 255, 0.3);
-}
-
 /* Typing indicator */
 .typing-indicator {
   display: flex;
@@ -549,4 +576,16 @@
   .message {
     max-width: 100%;
   }
+}
+
+.message-content ol,
+.message-content ul {
+  /* list-style-position: inside; /* Keep bullets/numbers inside the content area */
+  padding-top: 0px;
+  padding-bottom: 20px;
+  margin-left: 20px;
+}
+
+.message-content li {
+  margin-left: var(--spacing-sm); /* Remove default left margin */
 }

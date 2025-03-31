@@ -22,6 +22,9 @@ def setup_logger(name: str, level: int = logging.INFO) -> logging.Logger:
     logger = logging.getLogger(name)
     logger.setLevel(level)
     
+    # Disable propagation to parent loggers to prevent duplicate logs
+    logger.propagate = False
+    
     if not logger.handlers:
         handler = logging.StreamHandler()
         formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
