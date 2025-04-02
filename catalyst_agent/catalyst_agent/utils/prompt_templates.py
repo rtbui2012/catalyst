@@ -28,6 +28,13 @@ EXAMPLE output for an answer with a image URL:
 
 EXAMPLE of what NOT to do (sandbox urls are not valid links):
 My image ![here](sandbox:/blob_storage/cats.png)
+
+Render formulas and equations using LaTeX syntax embedded in dollar signs. For example:
+EXAMPLE inline formulas: 
+$E=mc^2$
+
+EXAMPLE block formulas: 
+$$E=mc^2$$
 """
 
 SYSTEM_GENERATE = f"""

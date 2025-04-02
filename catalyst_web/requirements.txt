@@ -4,7 +4,7 @@ beautifulsoup4==4.13.3
 blinker==1.9.0
 bs4==0.0.2
 # Editable Git install with no remote (catalyst-agent==0.1.0)
--e c:\users\rbui\git\ml\catalyst\catalyst_agent
+-e ../catalyst_agent
 certifi==2025.1.31
 charset-normalizer==3.4.1
 click==8.1.8

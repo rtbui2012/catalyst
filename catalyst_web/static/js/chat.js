@@ -10,6 +10,16 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Make the chat app instance available globally for the displayEvent function
     window.chatAppInstance = chatApp;
+
+    // renderMathInElement(document.body, {
+    //     delimiters: [
+    //         {left: '$$', right: '$$', display: true},
+    //         {left: '$', right: '$', display: false},
+    //         {left: '\\(', right: '\\)', display: false},
+    //         {left: '\\[', right: '\\]', display: true}
+    //     ],
+    //     throwOnError: false
+    // });
 });
 
 
@@ -662,7 +672,7 @@ class CatalystChat {
         
         // Format markdown content if it's from the assistant
         if (sender === 'assistant') {
-            formattedContent = this.formatMarkdown(content);
+            formattedContent = this.formatMarkdown(formattedContent);
         }
         
         // Add edit button only for user messages
@@ -692,6 +702,18 @@ class CatalystChat {
                 </div>
             </div>
         `;
+
+        // Update message text with Latex rendering
+        const messageTextContainer = messageDiv.querySelector('.message-text');
+        renderMathInElement(messageTextContainer, {
+            delimiters: [
+                {left: '$$', right: '$$', display: true},
+                {left: '$', right: '$', display: false},
+                {left: '\\[', right: '\\]', display: true},
+                {left: '\\(', right: '\\)', display: false},
+            ],
+            throwOnError: false
+        })
         
         // Add event listener for edit button if this is a user message
         if (sender === 'user') {
@@ -996,12 +1018,12 @@ class CatalystChat {
      */
     formatMarkdown(text) {
         // Use marked.js to convert markdown to HTML
-        const htmlContent = marked.parse(text);
-        
+        var htmlContent = marked.parse(text);
+
         // After converting to HTML, initialize syntax highlighting
-        setTimeout(() => {
+        setTimeout(() => {         
             document.querySelectorAll('pre code').forEach((block) => {
-                hljs.highlightElement(block);
+                hljs.highlightBlock(block);
             });
         }, 0);
         
