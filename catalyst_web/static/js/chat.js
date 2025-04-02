@@ -386,7 +386,7 @@ class CatalystChat {
 
         } catch (error) {
             console.error('Error sending message:', error);
-            this.removeThinkingMessage(thinkingMessageId);
+            this.removeThinkingMessage(this.thinkingMessageId);
             this.appendErrorMessage('Sorry, there was an error processing your request.');
         } finally {
             this.state.isProcessing = false;
@@ -534,9 +534,10 @@ class CatalystChat {
                         break;
                     case 'final_solution':
                         // Handle final solution event
-                        if (this.state.eventSource) 
+                        if (this.state.eventSource) {
                             this.state.eventSource.close();
                             this.state.eventSource = null;
+                        }
     
                         // Process message response
                         this.removeThinkingMessage(this.thinkingMessageId);
@@ -544,7 +545,7 @@ class CatalystChat {
                         
                         // Save conversation with current messages
                         this.saveCurrentConversation();
-                        return;                                     
+                        return;
                     default:
                         return; // Ignore unknown event types
                 }

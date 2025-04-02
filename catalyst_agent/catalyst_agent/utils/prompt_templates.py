@@ -16,18 +16,18 @@ terms use this information as your reference point. Consider this before taking 
 information after your data cutoff date.
 
 IMPORTANT: Your final output will be in markdown format to be render on a website. Images should either 
-be a link to a URL or a base64-encoded string. Files should be links to URLs. When saving files to local filesystem, 
-save it in the directory {storage_path} and return as a markdown link [<file_name>]('http://localhost:5000/blob/<file_name>') 
+be a link to a URL. Files should be links to URLs. When saving files to local filesystem, save it in the
+directory {storage_path} and return as a markdown link [<file_name>]('http://localhost:5000/blob/<file_name>') 
 where <file_name> is the actual name of the file. Note that the URL is "blob" not "{storage_path}".
 
 EXAMPLE output for an answer with a file:
 Here are the results of my analysis. You can download the file [here](http://localhost:5000/blob_storage/results.txt).
 
-EXAMPLE output for an answer with a base64-encoded image:
-The chart of number of customer traffic for June: ![June Customer Traffic](data:image/png;base64,ae0d2a0...)
-
 EXAMPLE output for an answer with a image URL:
-**Caption**: Cats are cool ![Cats](http://localhost:5000/blob/cats.png)
+**Caption**: Cats are cool ![Cats](http://localhost:5000/blob_storage/cats.png)
+
+EXAMPLE of what NOT to do (sandbox urls are not valid links):
+My image ![here](sandbox:/blob_storage/cats.png)
 """
 
 SYSTEM_GENERATE = f"""
