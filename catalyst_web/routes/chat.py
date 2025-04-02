@@ -1,15 +1,10 @@
-"""
-Chat-related routes for the Catalyst Web UI.
-
-This module handles message processing and integration with
-the Catalyst core agent. Chat history is now managed client-side.
-"""
-
+import time
 import logging
 import uuid
 from datetime import datetime
 from flask import Blueprint, render_template, request, jsonify, session, Response
-from services.chat_service import chat_service
+from catalyst_web.services.chat_service import chat_service
+import asyncio
 
 # Create blueprint
 chat_bp = Blueprint('chat', __name__)
@@ -36,17 +31,12 @@ def send_message():
     
     try:
         # Process the message using the chat service
-        response = chat_service.process_message(message, message_id)
-        
-        # Generate a conversation title if we have enough context now
-        if len(conversation_history) > 0:
-            # Add the current message to conversation history for title generation
-            conversation_with_new_msg = conversation_history + [
-                {'sender': 'user', 'content': message},
-                {'sender': 'assistant', 'content': response['content']}
-            ]
-            
-        return jsonify(response)
+        _ = chat_service.process_message(message, message_id)
+        return jsonify({
+            'event_url': '/chat/eventstream',
+            'status': 'success',
+            'message_id': message_id
+        }), 201
         
     except Exception as e:
         logger.error(f"Error processing message: {str(e)}")
@@ -54,22 +44,6 @@ def send_message():
             'error': 'Failed to process message',
             'message': str(e)
         }), 500
-
-@chat_bp.route('/chat/stream')
-def stream():
-    """
-    Stream chat responses using Server-Sent Events (SSE).
-    This endpoint will be implemented for streaming responses from the core agent.
-    """
-    def generate():
-        # Send a connected status message
-        yield "data: " + jsonify({'status': 'connected', 'message': 'SSE connection established'}).data.decode('utf-8') + "\n\n"
-        
-        # In the future, this will stream responses from the chat service
-        for chunk in chat_service.stream_response("Test streaming message"):
-            yield "data: " + jsonify(chunk).data.decode('utf-8') + "\n\n"
-    
-    return Response(generate(), mimetype='text/event-stream')
 
 @chat_bp.route('/chat/generate_title', methods=['POST'])
 def generate_title():
@@ -98,3 +72,17 @@ def generate_title():
             'title': 'Unknown Topic',
             'icon': '❓'
         }), 500
+
+
+@chat_bp.route('/chat/eventstream', methods=['GET'])
+def event_stream():
+    try:
+        logger.info("Starting event stream")
+        return chat_service.poll_agent_events()
+    except ValueError as e:
+        logger.error(f"Token or domain error: {str(e)}")
+        return jsonify({"error": str(e)}), 401
+    except Exception as e:
+        logger.error(f"Eventstream error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+

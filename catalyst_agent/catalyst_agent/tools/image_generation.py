@@ -10,7 +10,7 @@ import base64
 import requests
 from typing import Dict, List, Any, Optional, Union
 from .base import Tool, ToolResult
-
+from catalyst_agent.event_queue import EventQueue
 
 class ImageGenerationTool(Tool):
     """
@@ -33,7 +33,8 @@ class ImageGenerationTool(Tool):
                  size: str = "1024x1024",
                  quality: str = "standard",
                  response_format: str = "url",
-                 save_directory: Optional[str] = None):
+                 save_directory: Optional[str] = None,
+                 event_queue: Optional[EventQueue] = None):
         """
         Initialize the image generation tool.
         
@@ -48,7 +49,7 @@ class ImageGenerationTool(Tool):
             response_format: Response format (url or b64_json)
             save_directory: Directory to save images (if None, images are not saved)
         """
-        super().__init__(name, description)
+        super().__init__(name, description, event_queue=event_queue)
         
         # Get API key and endpoint from environment variables if not provided
         self.api_key = api_key or os.environ.get("AZURE_OPENAI_DALLE_KEY")

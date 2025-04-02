@@ -11,7 +11,7 @@ load_dotenv()
 parent_dir = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(parent_dir))
 
-from catalyst_agent.agent import AgentCore, AgentConfig
+from catalyst_agent import AgentCore, AgentConfig
 from catalyst_agent.tools.code_execution import DynamicCodeExecutionTool
 from catalyst_agent.tools.web_search import WebSearchTool
 from catalyst_agent.tools.web_fetch import WebFetchTool
@@ -20,7 +20,7 @@ from catalyst_agent.tools.package_manager import PackageInstallerTool
 
 if __name__ == "__main__":
     # Initialize the agent with a configuration
-    config = AgentConfig()
+    config = AgentConfig(blob_storage_path='./output')
     
     # Add current date to config metadata to help with temporal understanding
     current_date = datetime.now().strftime("%Y-%m-%d")
@@ -78,7 +78,7 @@ if __name__ == "__main__":
     
     # Example of a task that doesn't require a tool (pure language generation)
     creative_task = """
-    generate an animated image
+    Chart the median household income per year in the US since 2005.
     """
     
     # # Check if the computational task can be accomplished
@@ -93,5 +93,5 @@ if __name__ == "__main__":
     
     # # Example of processing the creative task (which could be done without tools)
     # print("\nEXECUTING CREATIVE TASK (with unnecessary tool usage):")
-    response = agent.process_message(computational_task)
+    response = agent.process_message(creative_task)
     print(f"Solution:\n{response}")

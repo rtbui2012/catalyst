@@ -9,7 +9,7 @@ import os
 import importlib
 import inspect
 import logging
-from typing import List, Dict, Any, Type
+from typing import Dict, Type
 
 from ..utils import setup_logger
 from .base import Tool
@@ -56,7 +56,7 @@ def discover_tools() -> Dict[str, Type[Tool]]:
     return tool_classes
 
 
-def instantiate_tool(tool_class: Type[Tool], **kwargs) -> Tool:
+def instantiate_tool(tool_class: Type[Tool], event_queue=None, **kwargs) -> Tool:
     """
     Instantiate a tool from its class.
     
@@ -68,7 +68,7 @@ def instantiate_tool(tool_class: Type[Tool], **kwargs) -> Tool:
         An instance of the tool
     """
     try:
-        return tool_class(**kwargs)
+        return tool_class(event_queue=event_queue, **kwargs)
     except Exception as e:
         logger = setup_logger('agentic.tools.discovery')
         logger.error(f"Error instantiating tool {tool_class.__name__}: {str(e)}")

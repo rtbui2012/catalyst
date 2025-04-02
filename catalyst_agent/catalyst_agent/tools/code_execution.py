@@ -16,6 +16,7 @@ import json
 import io
 import contextlib
 from .base import Tool, ToolResult
+from catalyst_agent.event_queue import EventQueue
 
 
 class DynamicCodeExecutionTool(Tool):
@@ -28,9 +29,13 @@ class DynamicCodeExecutionTool(Tool):
     
     def __init__(self, 
                  name: str = "execute_python", 
-                 description: str = "Execute Python code dynamically and return the results. This is very flexible and can be used when other tools fail.",
+                 description: str = "Execute Python code dynamically and return the results. "
+                   "This is very flexible and can be used when other tools fail."
+                   "Your code should output to stdout or stderr, and return a value if needed. "
+                   "If your code writes to a file, stream the full path of the file into stdout. ",
                  max_execution_time: int = 30,
-                 allowed_imports: Optional[list] = None):
+                 allowed_imports: Optional[list] = None,
+                 event_queue: Optional[EventQueue] = None):
         """
         Initialize the dynamic code execution tool.
         
@@ -39,8 +44,9 @@ class DynamicCodeExecutionTool(Tool):
             description: Description of what the tool does
             max_execution_time: Maximum execution time in seconds (not implemented yet)
             allowed_imports: List of allowed import modules, if None all imports are allowed
+            event_queue: Optional event queue for tool events
         """
-        super().__init__(name, description)
+        super().__init__(name, description, event_queue=event_queue)
         self.max_execution_time = max_execution_time
         self.allowed_imports = allowed_imports
     
@@ -57,6 +63,11 @@ class DynamicCodeExecutionTool(Tool):
         """
         if not code or not isinstance(code, str):
             return ToolResult.error_result("Code must be a non-empty string")
+        
+        # save to this files directory/../../../.tmp/agent_code_<uuid>.py
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".py", 
+                dir=os.path.join(os.path.dirname(__file__), "../../../.tmp")) as temp_file:
+            temp_file.write(code.encode('utf-8'))
 
         # Create string buffers for capturing stdout/stderr
         stdout_buffer = io.StringIO()
@@ -97,6 +108,8 @@ class DynamicCodeExecutionTool(Tool):
                 "stderr": stderr,
                 "return_value": return_value
             }
+
+            print(f"Code execution std result: {result_data}")
             
             # Include warning in result if stderr is not empty
             if stderr:

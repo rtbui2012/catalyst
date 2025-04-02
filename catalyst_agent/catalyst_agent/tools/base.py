@@ -6,16 +6,16 @@ that extend the agent's capabilities.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Any, Callable, Type, TypeVar, Generic, Union
-import json
+from typing import Dict, List, Optional, Any, Callable
 import inspect
 import uuid
-
+from catalyst_agent.event_queue import EventQueue
 
 class ToolResult:
     """Result of a tool execution."""
     
-    def __init__(self, success: bool, data: Any = None, error: Optional[str] = None):
+    def __init__(self, success: bool, data: Any = None, 
+                 error: Optional[str] = None):
         """
         Initialize a tool result.
         
@@ -54,7 +54,7 @@ class ToolResult:
 class Tool(ABC):
     """Abstract base class for tools that extend the agent's capabilities."""
     
-    def __init__(self, name: str, description: str):
+    def __init__(self, name: str, description: str, event_queue: Optional[EventQueue] = None):
         """
         Initialize a tool.
         
@@ -65,6 +65,7 @@ class Tool(ABC):
         self.id = str(uuid.uuid4())
         self.name = name
         self.description = description
+        self.event_queue = event_queue or EventQueue()
     
     @abstractmethod
     def execute(self, **kwargs) -> ToolResult:
@@ -258,8 +259,22 @@ class ToolRegistry:
             if modified_kwargs is not None:
                 kwargs = modified_kwargs
         
+        tool.event_queue.add_tool_input(
+            tool_name=tool.name,
+            tool_args=kwargs,
+            metadata={"tool_name": tool.name}
+        )
+
         # Execute the tool
         result = tool.execute(**kwargs)
+
+        tool.event_queue.add_tool_output(
+            tool_name=tool.name,
+            success=result.success,
+            data=result.data,
+            error=result.error,
+            metadata={"tool_name": tool.name}
+        )
         
         # Check if tool has post-execution capabilities
         if hasattr(tool, 'post_execute') and callable(getattr(tool, 'post_execute')):

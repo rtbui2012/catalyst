@@ -15,40 +15,28 @@ import textwrap
 from typing import Dict, List, Optional, Any, Union, Callable
 
 from .config import AgentConfig
-from .memory import MemoryManager, MessageEntry, ExecutionEntry
+from .memory import MemoryManager
 from .planning import Plan, PlanStep, PlanStatus, Planner, Executor, PlanningEngine
 from .tools import Tool, ToolResult, ToolRegistry, discover_tools, instantiate_tool
 from .utils import setup_logger, ensure_directory_exists
-from .llm import LLMManager  # Import the LLMManager
+from .llm import LLMManager
+from .event_queue import EventQueue
 
 
 class LLMPlanner(Planner):
     """A planner that uses a large language model to create execution plans."""
     
     def __init__(self, agent_core: 'AgentCore'):
-        """
-        Initialize the LLM planner.
-        
-        Args:
-            agent_core: Reference to the agent core
-        """
+        """Initialize the LLM planner."""
         self.agent_core = agent_core
         self.logger = setup_logger('agentic.catalyst_agent.planner')
         # Use the LLM manager from the agent core
         self.llm_manager = agent_core.llm_manager
+
     
     def create_plan(self, goal: str, context: Dict[str, Any]) -> Plan:
         """
         Create an execution plan for a given goal using a large language model.
-        
-        This implementation creates a plan based on the available tools and the goal.
-        
-        Args:
-            goal: The goal to create a plan for
-            context: Context information for planning
-            
-        Returns:
-            An execution plan
         """
         # Create a new plan
         plan = Plan(goal=goal)
@@ -128,26 +116,12 @@ class AgentExecutor(Executor):
     """An executor that runs plan steps using available tools."""
     
     def __init__(self, agent_core: 'AgentCore'):
-        """
-        Initialize the agent executor.
-        
-        Args:
-            agent_core: Reference to the agent core
-        """
+        """Initialize the agent executor."""
         self.agent_core = agent_core
         self.logger = setup_logger('agentic.catalyst_agent.executor')
     
     def execute_step(self, step: PlanStep, context: Dict[str, Any]) -> bool:
-        """
-        Execute a single step in a plan.
-        
-        Args:
-            step: The step to execute
-            context: Context information for execution
-            
-        Returns:
-            True if execution was successful, False otherwise
-        """
+        """Execute a single step in a plan."""
         self.logger.info(f"Executing step: {step.description}")
         
         # Log the execution in memory
@@ -285,23 +259,16 @@ class AgentExecutor(Executor):
 
 class AgentCore:
     """
-    Core agent class that coordinates all aspects of the agentic AI system.
-    
-    This class serves as the central component that receives messages,
-    manages memory, creates and executes plans, and utilizes tools.
+    Core agent class that coordinates all aspects of the agentic AI system.    
     """
-    
     def __init__(self, config: Optional[AgentConfig] = None):
-        """
-        Initialize the agent core.
-        
-        Args:
-            config: Configuration settings (optional, defaults to AgentConfig())
-        """
+        """ Initialize the agent core.  """
         self.config = config or AgentConfig()
         self.logger = setup_logger('agentic.catalyst_agent.core', 
-                                  logging.DEBUG if self.config.verbose else logging.INFO)
+                        logging.DEBUG if self.config.verbose else logging.INFO)
         
+        self.event_queue = EventQueue()
+
         # Set up memory
         memory_path = None
         if self.config.long_term_memory_enabled:
@@ -320,7 +287,7 @@ class AgentCore:
         self.tool_registry = ToolRegistry()
         
         # Set up LLM manager
-        self.llm_manager = LLMManager(self.config)
+        self.llm_manager = LLMManager(self.config, self.event_queue)
         
         # Automatically discover and register tools if enabled
         if self.config.tool_discovery_enabled:
@@ -334,7 +301,7 @@ class AgentCore:
                 for tool_name, tool_class in tool_classes.items():
                     try:
                         # Create an instance of the tool
-                        tool_instance = instantiate_tool(tool_class)
+                        tool_instance = instantiate_tool(tool_class, event_queue=self.event_queue)
                         # Register the tool
                         self.register_tool(tool_instance)
                         self.logger.info(f"Automatically registered tool: {tool_instance.name}")
@@ -354,16 +321,8 @@ class AgentCore:
         self.planning_engine = PlanningEngine(self.planner, self.executor, self.llm_manager)
     
     def process_message(self, message: str, sender: str = "user") -> str:
-        """
-        Process an incoming message and generate a response.
-        
-        Args:
-            message: The message to process
-            sender: The sender of the message
-            
-        Returns:
-            The agent's response message
-        """
+        """ Process an incoming message and generate a response. """
+
         self.logger.info(f"Processing message from {sender}: {message}")
         
         # Add message to memory
@@ -419,15 +378,8 @@ class AgentCore:
         return response
     
     def can_accomplish(self, task: str) -> Dict[str, Any]:
-        """
-        Evaluate if a task can be accomplished with the current tools.
+        """ Evaluate if a task can be accomplished with the current tools. """
         
-        Args:
-            task: The task to evaluate
-            
-        Returns:
-            Dictionary with 'can_accomplish' boolean and 'reason' string
-        """
         self.logger.info(f"Evaluating if task can be accomplished: {task}")
         
         # Create planning context
@@ -461,25 +413,12 @@ class AgentCore:
             }
     
     def register_tool(self, tool: Tool) -> None:
-        """
-        Register a tool for the agent to use.
-        
-        Args:
-            tool: The tool to register
-        """
+        """Register a tool for the agent to use."""
         self.logger.info(f"Registering tool: {tool.name}")
         self.tool_registry.register_tool(tool)
     
     def _generate_success_response(self, plan: Plan) -> str:
-        """
-        Generate a response message for a successful plan execution.
-        
-        Args:
-            plan: The executed plan
-            
-        Returns:
-            Response message
-        """
+        """Generate a response message for a successful plan execution."""
         # Create context for response generation
         context = {
             'conversation_history': self.memory.get_conversation_history(as_text=True),
@@ -536,15 +475,7 @@ class AgentCore:
                 return self.llm_manager.generate_response(plan.goal, context)
     
     def _generate_failure_response(self, plan: Plan) -> str:
-        """
-        Generate a response message for a failed plan execution.
-        
-        Args:
-            plan: The executed plan
-            
-        Returns:
-            Response message
-        """
+        """Generate a response message for a failed plan execution."""
         # Create context for response generation
         context = {
             'conversation_history': self.memory.get_conversation_history(as_text=True),

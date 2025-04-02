@@ -10,16 +10,22 @@ import sys
 import subprocess
 from typing import Dict, List, Any, Optional, Union
 from .base import Tool, ToolResult
-
+from catalyst_agent.event_queue import EventQueue
+import importlib
+import pkg_resources
 
 class PackageInstallerTool(Tool):
     """Tool for installing Python packages using pip."""
     
-    def __init__(self):
+    def __init__(self,
+                 name: str = "package_installer",
+                 description: str = "Install Python packages using pip. Can check if packages are installed and install missing ones.",
+                 event_queue: Optional[Any] = None):
         """Initialize the package installer tool."""
         super().__init__(
             name="package_installer",
-            description="Install Python packages using pip. Can check if packages are installed and install missing ones."
+            description="Install Python packages using pip. Can check if packages are installed and install missing ones.",
+            event_queue=event_queue
         )
     
     def execute(self, packages: List[str], upgrade: bool = False) -> ToolResult:

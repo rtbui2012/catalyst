@@ -6,12 +6,12 @@ from web pages.
 """
 
 import requests
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from bs4 import BeautifulSoup
 from .base import Tool, ToolResult
 from html2text import HTML2Text
 from urllib.parse import urlparse
-
+from catalyst_agent.event_queue import EventQueue
 
 class WebFetchTool(Tool):
     """
@@ -27,7 +27,8 @@ class WebFetchTool(Tool):
                  name: str = "web_fetch_text_only", 
                  description: str = "Fetch text content from a web page URL. Do not use this tool to fetch binary content like images. ",
                  max_content_length: int = 10000,
-                 user_agent: str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"):
+                 user_agent: str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                 event_queue: Optional[EventQueue] = None):
         """
         Initialize the web fetch tool.
         
@@ -37,7 +38,7 @@ class WebFetchTool(Tool):
             max_content_length: Maximum length of content to return (in characters)
             user_agent: User agent string to use for requests
         """
-        super().__init__(name, description)
+        super().__init__(name, description, event_queue=event_queue)
         self.max_content_length = max_content_length
         self.user_agent = user_agent
         self.html_converter = HTML2Text()

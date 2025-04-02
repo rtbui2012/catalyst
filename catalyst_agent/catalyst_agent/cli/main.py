@@ -15,15 +15,7 @@ from catalyst_agent import AgentCore, AgentConfig
 
 
 def main(args: Optional[List[str]] = None) -> int:
-    """
-    Main entry point for the CLI.
-    
-    Args:
-        args: Command line arguments (defaults to sys.argv)
-        
-    Returns:
-        Exit code
-    """
+    """ Main entry point for the CLI. """
     parser = argparse.ArgumentParser(description="Catalyst Agent CLI")
     
     # Add subparsers for different commands

@@ -7,10 +7,9 @@ and executors that create and run plans.
 
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Any, Callable
-import logging
-
+from catalyst_agent.utils import setup_logger
 from .base import Plan, PlanStep, PlanStatus
-
+from catalyst_agent.utils import setup_logger
 
 class Planner(ABC):
     """Abstract base class for planners that create execution plans."""
@@ -71,7 +70,7 @@ class PlanningEngine:
         self.current_plan: Optional[Plan] = None
         self.execution_context: Dict[str, Any] = {}
         self.executed_steps: List[Dict[str, Any]] = []
-        self.logger = logging.getLogger('agentic.planning')
+        self.logger = setup_logger('agentic.planning')
     
     def create_plan(self, goal: str, context: Dict[str, Any]) -> Plan:
         """
@@ -84,7 +83,9 @@ class PlanningEngine:
         Returns:
             The created plan
         """
+        self.logger.info(f"Creating plan for goal: {goal}")
         self.current_plan = self.planner.create_plan(goal, context)
+        self.logger.info(f"Plan created: {self.current_plan}")
         self.execution_context = dict(context)  # Create a copy
         return self.current_plan
     
@@ -188,11 +189,29 @@ class PlanningEngine:
                 # Add the current_goal to the context
                 self.execution_context['current_goal'] = self.current_plan.goal
                 
+                # Ensure executed_steps is a list of dictionaries that can be properly processed
+                # This fixes the 'self' reference error by ensuring we're passing compatible data types
+                safe_executed_steps = []
+                for executed_step in self.executed_steps:
+                    # Make sure we're working with a plain dictionary
+                    if isinstance(executed_step, dict):
+                        safe_executed_steps.append(executed_step)
+                    elif hasattr(executed_step, 'to_dict'):
+                        # If it's an object with a to_dict method, use that
+                        safe_executed_steps.append(executed_step.to_dict())
+                    else:
+                        # Last resort, create a simple dict representation
+                        safe_executed_steps.append({
+                            'description': str(executed_step),
+                            'tool_name': None,
+                            'tool_args': {}
+                        })
+                
                 # Reevaluate the plan based on the execution results
                 updated_plan_dict = self.llm_manager.reevaluate_plan(
                     goal=self.current_plan.goal,
                     current_plan=current_plan_dict,
-                    executed_steps=self.executed_steps,
+                    executed_steps=safe_executed_steps,
                     last_step_result=step.result,
                     context=self.execution_context
                 )

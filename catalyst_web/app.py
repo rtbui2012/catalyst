@@ -12,7 +12,7 @@ import sys
 import logging
 from datetime import datetime
 from pathlib import Path
-from flask import Flask, render_template, request, jsonify, session, Response
+from flask import Flask, render_template, send_from_directory
 from flask_cors import CORS
 from dotenv import load_dotenv
 
@@ -45,6 +45,13 @@ from routes.api import api_bp
 app.register_blueprint(auth_bp)
 app.register_blueprint(chat_bp)
 app.register_blueprint(api_bp, url_prefix='/api')
+
+@app.route('/blob_storage/<path:filename>')
+def serve_blob(filename):
+    """Serve files from the /blob_storage directory."""
+    blob_folder = os.path.abspath("./blob_storage")  # Use absolute path
+    logger.info(f"Serving file from: {os.path.join(blob_folder, filename)}")
+    return send_from_directory(blob_folder, filename)
 
 @app.route('/')
 def index():

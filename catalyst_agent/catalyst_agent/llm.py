@@ -8,6 +8,7 @@ and other AI-powered features.
 
 import os
 import logging
+import json
 import textwrap
 from typing import List, Dict, Any, Optional, Union
 import tiktoken
@@ -15,7 +16,11 @@ from openai import AzureOpenAI
 
 from .config import AgentConfig
 from .utils import setup_logger
+from catalyst_agent.utils.prompt_templates import SYSTEM_GENERATE, SYSTEM_REPLAN 
+from catalyst_agent.utils.prompt_templates import USER_PLAN, TOOLS_FEW_SHOT_EXAMPLES
+from catalyst_agent.utils.prompt_templates import USER_GENERATE, USER_REPLAN
 
+from .event_queue import EventQueue, EventType
 
 class LLMManager:
     """
@@ -25,7 +30,7 @@ class LLMManager:
     including planning, response generation, and other AI capabilities.
     """
     
-    def __init__(self, config: AgentConfig):
+    def __init__(self, config: AgentConfig, event_queue: EventQueue = None):
         """
         Initialize the LLM manager.
         
@@ -38,6 +43,9 @@ class LLMManager:
         
         # Initialize the OpenAI client
         self._initialize_client()
+
+        # Initialize event queue
+        self.event_queue = event_queue or EventQueue()
         
         # Initialize tokenizer for token counting
         try:
@@ -86,15 +94,8 @@ class LLMManager:
             raise
     
     def _get_temporal_context(self, context: Dict[str, Any]) -> Optional[str]:
-        """
-        Extract temporal context (current date) from the context.
+        """ Get the current date from the context or config metadata. """       
         
-        Args:
-            context: The context dictionary that may contain temporal information
-            
-        Returns:
-            Current date string if available, None otherwise
-        """
         # First try to get it directly from context
         current_date = context.get('current_date')
         
@@ -102,23 +103,12 @@ class LLMManager:
         if not current_date and 'config' in context and 'metadata' in context['config']:
             config_metadata = context['config']['metadata']
             current_date = config_metadata.get('current_date')
-            
-        if current_date:
-            self.logger.debug(f"Found temporal context: date={current_date}")
         
         return current_date
     
     def generate_plan(self, goal: str, context: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Generate a plan for a given goal using the language model.
-        
-        Args:
-            goal: The goal to create a plan for
-            context: Additional context information
-            
-        Returns:
-            Dictionary containing plan steps and reasoning
-        """
+        """ Generate a plan for a given goal using the language model. """
+
         # Get available tools for planning
         tools = context.get('available_tools', [])
         
@@ -126,9 +116,7 @@ class LLMManager:
         current_date = self._get_temporal_context(context)
         
         # Log availability of temporal context
-        if current_date:
-            self.logger.debug(f"Temporal context available: date={current_date}")
-        else:
+        if not current_date:
             self.logger.warning("No temporal context found in planning context")
         
         # Create detailed tool descriptions with parameter schemas
@@ -161,82 +149,19 @@ class LLMManager:
         conversation_history = context.get('conversation_history', '')
         
         # Construct prompt for the LLM
-        system_message = textwrap.dedent(f"""
-            You are an AI assistant that can break down tasks into specific steps.
-            Your job is to analyze a goal and create a plan to accomplish it using available tools.
-            Each step should be clear, specific, and actionable.
+        system_message = SYSTEM_GENERATE.format(
+                                current_date=current_date, 
+                                storage_path=self.config.blob_storage_path)
 
-            IMPORTANT: Only use tools when absolutely necessary. Many tasks can be accomplished 
-            directly through your language capabilities. For example:
-            - Use tools for: calculations, file operations, code execution, data processing, web searches for current information
-            - Don't use tools for: conceptual explanations, creative writing, giving explanations about timeless concepts, or 
-            other tasks that require just language generation
-
-            When using tools, you MUST use the EXACT parameter names as specified in the tool schemas.
-            Do not invent or rename parameters. For example, if a tool requires parameters named 'a' and 'b',
-            do not use 'operand1' or 'operand2' or any other names.
-
-            Today's date is {current_date}. When processing queries about any other time-relative 
-            terms use this information as your reference point. Consider this before taking on tasks requiring
-            information after your data cutoff date.
-        """)
         # Log the full system message for debugging
         self.logger.info(f"System message for planning: {system_message}")
 
-        user_message = textwrap.dedent(f"""
-            GOAL: {goal}
-
-            AVAILABLE TOOLS WITH PARAMETER SCHEMAS:
-            {tool_descriptions}
-
-            CONVERSATION HISTORY:
-            {conversation_history}
-
-            First, consider whether this task really requires using tools or if it can be accomplished 
-            directly through language generation. Don't use tools unnecessarily.
-
-            If tools are needed, break down this goal into a series of steps. For each step, provide:
-            1. A clear description of what needs to be done
-            2. Which tool (if any) should be used for this step
-            3. What arguments should be passed to the tool using EXACTLY the parameter names specified in the tool schema
-
-            FORMAT YOUR RESPONSE AS JSON:
-            {{
-              "plan": [
-                {{
-                  "description": "Step description",
-                  "tool_name": "name_of_tool or null if no tool is needed",
-                  "tool_args": {{"exact_param_name1": "value1", "exact_param_name2": "value2" }} or null if no tool is used
-                }},
-                ...
-              ],
-              "reasoning": "Explanation of your thinking and why this plan should work"
-            }}
-
-            EXAMPLE for tasks requiring a tool:
-            {{
-              "plan": [
-                {{
-                  "description": "Add 2 and 3 using the calculator",
-                  "tool_name": "calculator",
-                  "tool_args": {{ "operation": "add", "a": 2, "b": 3 }}
-                }}
-              ],
-              "reasoning": "Since this requires calculation, I'm using the calculator tool with the exact parameter names from its schema."
-            }}
-
-            EXAMPLE for tasks NOT requiring a tool:
-            {{
-              "plan": [
-                {{
-                  "description": "Generate a creative story about space exploration",
-                  "tool_name": null,
-                  "tool_args": null
-                }}
-              ],
-              "reasoning": "This is a creative writing task that can be accomplished through language generation without any external tools."
-            }}
-        """)
+        user_message = USER_PLAN.format(
+            goal=goal,
+            tool_descriptions=tool_descriptions,
+            conversation_history=conversation_history,
+            few_shot_examples=TOOLS_FEW_SHOT_EXAMPLES
+        )
 
         self.logger.info(f"User message for planning: {user_message}")
         
@@ -257,16 +182,29 @@ class LLMManager:
             
             # Extract and return the plan
             content = response.choices[0].message.content
+
             self.logger.info(f"Received plan response: {content}")  
             
             try:
-                import json
                 plan_data = json.loads(content)
                 self.logger.info(f"Successfully generated plan with {len(plan_data.get('plan', []))} steps")
+
+                self.event_queue.add_planning(
+                    goal=goal,
+                    plan=plan_data.get('plan', []),
+                    reasoning=plan_data.get('reasoning', 'No reasoning provided'),
+                )
+
                 return plan_data
             except json.JSONDecodeError as e:
                 self.logger.error(f"Failed to parse plan JSON: {e}. Response content: {content}")
                 # Return a basic error plan
+
+                self.event_queue.add_error(
+                    goal=goal,
+                    error="error parsing plan",
+                )
+
                 return {
                     "plan": [
                         {
@@ -325,12 +263,10 @@ class LLMManager:
         # Log the full system message for debugging
         self.logger.debug(f"System message for response: {system_message}")
 
-        user_message = textwrap.dedent(f"""
-            USER MESSAGE: {message}
-
-            CONVERSATION HISTORY:
-            {conversation_history}
-        """)
+        user_message = USER_GENERATE.format(
+            message=message,
+            conversation_history=conversation_history
+        )
         
         if current_plan:
             plan_str = textwrap.dedent(f"""
@@ -366,7 +302,8 @@ class LLMManager:
             
             # Extract and return the response
             content = response.choices[0].message.content
-            self.logger.info(f"Successfully generated response")
+            
+            self.logger.info(f"Final Solution: {content}")
             return content
                 
         except Exception as e:
@@ -395,22 +332,13 @@ class LLMManager:
                        context: Dict[str, Any]) -> Dict[str, Any]:
         """
         Reevaluate and potentially modify the current plan based on the results of the last executed step.
-        
-        Args:
-            goal: The original goal of the plan
-            current_plan: The current plan dictionary
-            executed_steps: List of steps that have been executed
-            last_step_result: Result of the last executed step
-            context: Additional context information
-            
-        Returns:
-            Updated plan dictionary, potentially with modified or additional steps
         """
-        # Get available tools for planning
-        tools = context.get('available_tools', [])
         
         # Get temporal context
         current_date = self._get_temporal_context(context)
+
+        # Get available tools for planning
+        tools = context.get('available_tools', [])
         
         # Create detailed tool descriptions with parameter schemas
         tool_details = []
@@ -457,79 +385,27 @@ class LLMManager:
                 if step.get('tool_args'):
                     remaining_steps_str += f"   Args: {step.get('tool_args')}\n"
         
+        self.logger.info(f"blob_storage_path: {self.config.blob_storage_path}")
+
         # Construct prompt for the LLM
-        system_message = textwrap.dedent("""
-            You are an AI assistant that can analyze execution results and adapt plans accordingly.
-            Your job is to evaluate the results of the last executed step and determine if the current plan needs adjustment.
-            You can:
-            1. Keep the remaining steps as they are if they're still appropriate
-            2. Modify steps if needed based on new information
-            3. Add new steps if necessary to achieve the goal
-            4. Remove steps that are no longer needed
+        system_message = SYSTEM_REPLAN.format(
+                                current_date=current_date, 
+                                storage_path=self.config.blob_storage_path)
+             
+        self.logger.info(f"current_plan: {json.dumps(current_plan, indent=2)}")
 
-            IMPORTANT: Only use tools when absolutely necessary. Many tasks can be accomplished 
-            directly through your language capabilities. For example:
-            - Use tools for: calculations, file operations, code execution, data processing, web searches for current information
-            - Don't use tools for: historical facts, conceptual explanations, creative writing, 
-              giving explanations about timeless concepts, or other tasks that require just language generation
-
-            For questions about current events, recent developments, or time-sensitive information
-            (sports results, current market data, recent news, etc.), ALWAYS use the web_search tool
-            to ensure the information is accurate and up-to-date.
-
-            VERY IMPORTANT: For questions about political figures, election outcomes, government officials, 
-            historical events that could have different interpretations, or ANY information that may change 
-            over time, ALWAYS use the web_search tool to ensure you have the most accurate information.
-
-            When using tools, you MUST use the EXACT parameter names as specified in the tool schemas.
-            Do not invent or rename parameters.
-        """)
-        
-        # Add temporal context to the system message if available
-        if current_date:
-            system_message += f"\nToday's date is {current_date}. When processing queries about any other time-relative terms use this information as your reference point."
-        
-        user_message = textwrap.dedent(f"""
-            GOAL: {goal}
-
-            AVAILABLE TOOLS WITH PARAMETER SCHEMAS:
-            {tool_descriptions}
-
-            EXECUTED STEPS AND RESULTS:
-            {executed_steps_str}
-
-            LAST STEP RESULT:
-            {last_step_result}
-
-            REMAINING STEPS IN CURRENT PLAN:
-            {remaining_steps_str}
-
-            ORIGINAL PLAN REASONING:
-            {current_plan.get('reasoning', 'No reasoning provided')}
-
-            Please evaluate whether the remaining steps are still appropriate based on the results of the executed steps.
-            First, consider whether any remaining steps really require using tools or if they can be accomplished
-            directly through language generation. Don't use tools unnecessarily.
-
-            If adjustments are needed, provide an updated plan. Otherwise, confirm the current plan is still valid.
-
-            FORMAT YOUR RESPONSE AS JSON:
-            {{
-              "plan_needs_adjustment": true/false,
-              "updated_plan": [
-                {{
-                  "description": "Step description",
-                  "tool_name": "name_of_tool or null if no tool is needed",
-                  "tool_args": {{ "exact_param_name1": "value1", "exact_param_name2": "value2" }} or null if no tool is used
-                }},
-                ...
-              ],
-              "reasoning": "Explanation of your evaluation and any adjustments made"
-            }}
-        """)
+        user_message = USER_REPLAN.format(
+            goal=goal,
+            tool_descriptions=tool_descriptions,
+            executed_steps_str=executed_steps_str,
+            last_step_result=last_step_result,
+            remaining_steps_str=remaining_steps_str,
+            reasoning=current_plan.get('metadata').get('reasoning', 'No reasoning provided')
+        )
         
         # Generate an updated plan using the LLM
         self.logger.info(f"Reevaluating plan for goal: {goal} after step execution")
+        self.logger.info(f"user_message: {user_message}")
         
         try:
             response = self.client.chat.completions.create(
@@ -548,18 +424,24 @@ class LLMManager:
             self.logger.info(f"Received plan reevaluation response: {content}")
             
             try:
-                import json
                 reevaluation_data = json.loads(content)
                 
                 # If plan needs adjustment, return the updated plan
                 if reevaluation_data.get('plan_needs_adjustment', False):
                     self.logger.info("Plan adjustment needed - returning updated plan")
                     
-                    # Combine executed steps with updated steps
+                    # The executed_steps are already in the correct dictionary format
+                    # We just need to safely combine them with the updated_plan
                     final_plan = {
                         "plan": executed_steps + reevaluation_data.get('updated_plan', []),
                         "reasoning": reevaluation_data.get('reasoning', 'No reasoning provided for adjustment')
                     }
+
+                    self.event_queue.add_planning(
+                        goal=goal,
+                        plan=final_plan.get('plan', []),
+                        reasoning=final_plan.get('reasoning', 'No reasoning provided'),
+                    )
                     return final_plan
                 else:
                     self.logger.info("No plan adjustment needed - returning original plan")

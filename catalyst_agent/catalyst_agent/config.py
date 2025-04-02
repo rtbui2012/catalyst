@@ -32,6 +32,9 @@ class AgentConfig:
     available_tools: List[str] = field(default_factory=list)
     tool_discovery_enabled: bool = True
     
+    # Blob storage configuration
+    blob_storage_path: Optional[str] = "./"  # Path to blob storage for tools output
+
     # Additional custom parameters
     custom_parameters: Dict[str, Any] = field(default_factory=dict)
     

@@ -38,6 +38,7 @@ venv.bak/
 
 # Temporary files
 .backup/
+.tmp/
 
 # IDE specific files
 .idea/
@@ -54,3 +55,5 @@ output/
 generated/
 **/generated_images/
 **/outputs/
+catalyst_web/blob_storage/
+

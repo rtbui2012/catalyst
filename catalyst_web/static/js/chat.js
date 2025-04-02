@@ -7,7 +7,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize the chat application
     const chatApp = new CatalystChat();
     chatApp.initialize();
+    
+    // Make the chat app instance available globally for the displayEvent function
+    window.chatAppInstance = chatApp;
 });
+
 
 /**
  * CatalystChat - Main application class
@@ -23,7 +27,8 @@ class CatalystChat {
             clearChatButton: document.getElementById('clear-chat'),
             exportChatButton: document.getElementById('export-chat'),
             newChatButton: document.getElementById('new-chat'),
-            conversationList: document.getElementById('conversation-list')
+            conversationList: document.getElementById('conversation-list'),
+            eventsContainer: null // Will be created dynamically when needed
         };
         
         // Chat state
@@ -35,7 +40,10 @@ class CatalystChat {
             currentIcon: null,
             isEditing: false,
             currentEditId: null,
-            savedConversations: []
+            savedConversations: [],
+            eventSource: null,
+            events: [], // Store events for the current message
+            thinkingMessageId: null
         };
     }
     
@@ -342,14 +350,29 @@ class CatalystChat {
 
         this.state.isProcessing = true;
 
-        const thinkingMessageId = this.generateId();
-        this.appendThinkingMessage(thinkingMessageId, userMessageId);
+        this.thinkingMessageId = this.generateId()
+        this.appendThinkingMessage(this.thinkingMessageId, userMessageId);
 
         try {
-            this.generateTitle(this.state.messageHistory.filter(msg => msg.sender === 'user'));
+            if (this.state.eventSource) {
+                this.state.eventSource.close();
+                this.state.eventSource = null;
+            }
+
+            this.state.eventSource = new EventSource('/chat/eventstream');
+            this.state.eventSource.onopen = (event) => {
+                console.log('SSE connection established');
+            }
+            this.state.eventSource.onmessage = (event) => {
+                console.log('SSE message received:', event.data);
+                this.displayEvent(event.data);
+            }
+            this.state.eventSource.onclose = (event) => {
+                console.log('SSE connection closed:', event);
+            }
 
             // Send message to get AI response
-            const messageResponse = await fetch('/chat/send', {
+            fetch('/chat/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
@@ -358,16 +381,8 @@ class CatalystChat {
                     conversation_history: this.state.messageHistory
                 })
             });
-            
-            if (!messageResponse.ok) throw new Error('Failed to get response');
-            const messageData = await messageResponse.json();
-            
-            // Process message response
-            this.removeThinkingMessage(thinkingMessageId);
-            this.appendMessage('assistant', messageData.content, messageData.id, userMessageId);
-            
-            // Save conversation with current messages
-            this.saveCurrentConversation();
+
+            this.generateTitle(this.state.messageHistory.filter(msg => msg.sender === 'user'));
 
         } catch (error) {
             console.error('Error sending message:', error);
@@ -455,6 +470,7 @@ class CatalystChat {
                 <i class="fas fa-robot"></i>
             </div>
             <div class="message-content">
+                <div class="event-tags"></div>
                 <div class="typing-indicator">
                     <span></span>
                     <span></span>
@@ -468,6 +484,134 @@ class CatalystChat {
         // Scroll to the new message
         this.scrollToBottom();
     }
+
+    displayEvent(eventData) {
+        // Get a reference to the chat app instance
+        const chatApp = window.chatAppInstance;
+        
+        if (!chatApp) {
+            console.error('Chat app instance not available');
+            return;
+        }
+        
+        try {
+            // Parse the event data
+            const eventObj = JSON.parse(eventData);
+            
+            // Initialize events array for the current message if needed
+            if (!chatApp.state.currentEvents) {
+                chatApp.state.currentEvents = [];
+            }
+            
+            // Determine event type and icon/message
+            let eventTypeClass = 'event-default';
+            let eventIcon = 'ℹ️';
+            let eventMessage = 'event';
+            
+            if (eventObj.event_type) {
+                switch(eventObj.event_type.toLowerCase()) {
+                    case 'tool_input':
+                        return;
+                    case 'tool_output':
+                        eventTypeClass = 'event-tool';
+                        eventIcon = '🔧';
+                        eventMessage = eventObj.metadata?.tool_name || 'tool';
+                        break;
+                    case 'language_operations':
+                        eventTypeClass = 'event-language-skills';
+                        eventIcon = '🧠';
+                        eventMessage = "llm";
+                        break;
+                    case 'plan_generation':
+                        eventTypeClass = 'event-plan';
+                        eventIcon = '📊';
+                        eventMessage = "plan";
+                        break;
+                    case 'plan_change':
+                        eventTypeClass = 'event-replan';
+                        eventIcon = '🔄';
+                        eventMessage = "replan";
+                        break;
+                    case 'final_solution':
+                        // Handle final solution event
+                        if (this.state.eventSource) 
+                            this.state.eventSource.close();
+                            this.state.eventSource = null;
+    
+                        // Process message response
+                        this.removeThinkingMessage(this.thinkingMessageId);
+                        this.appendMessage('assistant', eventObj.data.solution, eventObj.metadata.message_id);
+                        
+                        // Save conversation with current messages
+                        this.saveCurrentConversation();
+                        return;                                     
+                    default:
+                        return; // Ignore unknown event types
+                }
+            
+                // Add event to the current events array
+                chatApp.state.currentEvents.push({
+                    type: eventTypeClass,
+                    icon: eventIcon,
+                    message: eventMessage,
+                    timestamp: new Date(),
+                    data: eventObj
+                });
+                
+                // Find any thinking message that might need to have tags added
+                const thinkingMessage = document.querySelector('.message.assistant.thinking');
+                if (thinkingMessage) {
+                    // Update or create the event tags container
+                    let eventTagsContainer = thinkingMessage.querySelector('.event-tags');
+                    if (!eventTagsContainer) {
+                        eventTagsContainer = document.createElement('div');
+                        eventTagsContainer.className = 'event-tags';
+                        
+                        // Insert at the top of the message content
+                        const messageContent = thinkingMessage.querySelector('.message-content');
+                        if (messageContent) {
+                            messageContent.insertBefore(eventTagsContainer, messageContent.firstChild);
+                        }
+                    }
+                    
+                    // Add the new event tag
+                    const eventTag = document.createElement('span');
+                    eventTag.className = `event-tag ${eventTypeClass}`;
+                    eventTag.title = JSON.stringify(eventObj, null, 2);
+                    eventTag.innerHTML = `<span class="event-icon">${eventIcon}</span><span class="event-label">${eventMessage}</span>`;
+                    
+                    // Add to the container
+                    eventTagsContainer.appendChild(eventTag);
+                }
+                
+                // Store the event in the chat app's state for later use
+                if (!chatApp.state.events) {
+                    chatApp.state.events = {};
+                }
+                
+                // Store events by reference ID to ensure they're preserved
+                const referenceId = thinkingMessage?.dataset?.referenceId;
+                if (referenceId) {
+                    if (!chatApp.state.events[referenceId]) {
+                        chatApp.state.events[referenceId] = [];
+                    }
+                    chatApp.state.events[referenceId].push({
+                        type: eventTypeClass,
+                        icon: eventIcon,
+                        message: eventMessage,
+                        data: eventObj,
+                        html: `<span class="event-tag ${eventTypeClass}" title='${JSON.stringify(eventObj, null, 2).replace(/'/g, "&apos;")}'>
+                            <span class="event-icon">${eventIcon}</span><span class="event-label">${eventMessage}</span>
+                        </span>`
+                    });
+                }
+            }
+            
+        } catch (error) {
+            console.error('Error processing event data:', error, eventData);
+        }
+    }
+    
     
     /**
      * Remove a thinking message by ID
@@ -526,6 +670,7 @@ class CatalystChat {
                 <i class="fas fa-${sender === 'user' ? 'user' : 'robot'}"></i>
             </div>
             <div class="message-content">
+                ${sender === 'assistant' ? '<div class="event-tags"></div>' : ''}
                 <div class="message-text">${formattedContent}</div>
                 <div class="message-footer">
                     <div class="message-time">${this.formatTime(new Date())}</div>
@@ -550,6 +695,50 @@ class CatalystChat {
         copyBtn.addEventListener('click', () => {
             this.copyMessageToClipboard(messageDiv, content);
         });
+        
+        // If this is an assistant message that replaces a thinking message, transfer any event tags
+        if (sender === 'assistant' && referenceId) {
+            // Method 1: Try to get tags from thinking message in the DOM
+            const thinkingMessage = document.querySelector(`.message.assistant.thinking[data-reference-id="${referenceId}"]`);
+            if (thinkingMessage) {
+                const eventTags = thinkingMessage.querySelector('.event-tags');
+                if (eventTags) {
+                    const newEventTags = messageDiv.querySelector('.event-tags');
+                    if (newEventTags && eventTags.children.length > 0) {
+                        // Clone the event tags from the thinking message
+                        Array.from(eventTags.children).forEach(tagElement => {
+                            newEventTags.appendChild(tagElement.cloneNode(true));
+                        });
+                    }
+                }
+            }
+            
+            // Method 2: Check for events stored by reference ID in state
+            if (this.state.events && this.state.events[referenceId]) {
+                const newEventTags = messageDiv.querySelector('.event-tags');
+                
+                // Skip if we already copied events from the thinking message
+                if (newEventTags && newEventTags.children.length === 0) {
+                    // Create event tags from stored data
+                    this.state.events[referenceId].forEach(event => {
+                        if (event.html) {
+                            // Create tag from stored HTML
+                            const tagContainer = document.createElement('div');
+                            tagContainer.innerHTML = event.html;
+                            const tagElement = tagContainer.firstChild;
+                            newEventTags.appendChild(tagElement);
+                        } else {
+                            // Create tag from event data
+                            const tagElement = document.createElement('span');
+                            tagElement.className = `event-tag ${event.type}`;
+                            tagElement.title = JSON.stringify(event.data, null, 2);
+                            tagElement.innerHTML = `<span class="event-icon">${event.icon}</span><span class="event-label">${event.message}</span>`;
+                            newEventTags.appendChild(tagElement);
+                        }
+                    });
+                }
+            }
+        }
         
         this.elements.chatMessages.appendChild(messageDiv);
         
@@ -661,30 +850,42 @@ class CatalystChat {
             messageActions.style.display = '';
         }
 
-        const nextMessage = document.querySelector(`.message[data-reference-id="${messageId}"]`);
-
-        if (nextMessage) {
-            let currentElement = nextMessage;
-            while (currentElement) {
-                const nextEl = currentElement.nextElementSibling;
-                currentElement.remove();
-                currentElement = nextEl;
-            }
-
-            const responseIndex = this.state.messageHistory.findIndex(msg => msg.id === nextMessage.dataset.id);
-            if (responseIndex !== -1) {
-                this.state.messageHistory = this.state.messageHistory.slice(0, responseIndex);
-            }
-
-            const firstUserMessage = this.state.messageHistory.find(msg => msg.sender === 'user');
-            this.saveCurrentConversation();
-
-            this.state.isProcessing = true;
-            this.reSendEditedMessage(newContent, messageId);
-        } else {
-            const firstUserMessage = this.state.messageHistory.find(msg => msg.sender === 'user');
-            this.saveCurrentConversation();
+        // Try multiple strategies to find all assistant messages to delete
+        
+        // Collect all messages to remove (all messages after the edited one)
+        const messagesToRemove = [];
+        let currentElement = messageElement.nextElementSibling;
+        
+        // Log each element for debugging
+        console.log('Messages after edited one:');
+        while (currentElement) {
+            console.log(currentElement);
+            messagesToRemove.push(currentElement);
+            currentElement = currentElement.nextElementSibling;
         }
+        
+        // Also collect the IDs for message history cleanup
+        const messageIdsToRemove = [];
+        messagesToRemove.forEach(msg => {
+            if (msg.dataset.id) {
+                messageIdsToRemove.push(msg.dataset.id);
+            }
+        });
+        
+        // Remove all messages that come after the edited message
+        messagesToRemove.forEach(msg => msg.remove());
+        
+        // Remove these messages from history
+        if (messageIdsToRemove.length > 0) {
+            this.state.messageHistory = this.state.messageHistory.filter(
+                msg => !messageIdsToRemove.includes(msg.id)
+            );
+        }
+
+        this.saveCurrentConversation();
+
+        this.state.isProcessing = true;
+        this.reSendEditedMessage(newContent, messageId);
     }
     
     /**
@@ -692,46 +893,73 @@ class CatalystChat {
      */
     async reSendEditedMessage(messageText, messageId) {
         try {
-            // Add a thinking message with the typing indicator
-            const thinkingMessageId = this.generateId();
-            this.appendThinkingMessage(thinkingMessageId, messageId);
+            console.log('Re-sending edited message:', messageText, 'with ID:', messageId);
+            // Store the edited message ID for reference
+            this.state.editedMessageId = messageId;
             
-            // Send message to server with conversation history
-            const response = await fetch('/chat/send', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ 
-                    message: messageText,
-                    messageId: messageId,
-                    conversation_history: this.state.messageHistory
-                })
+            // Temporarily store current message history
+            const originalHistory = [...this.state.messageHistory];
+            
+            // Filter out responses that were generated after the edited message
+            this.state.messageHistory = this.state.messageHistory.filter(msg => {
+                return msg.id === messageId || !msg.reference_id || msg.reference_id !== messageId;
             });
             
-            if (!response.ok) {
-                throw new Error('Failed to get response');
+            // Set up for processing new message
+            this.state.isProcessing = true;
+            
+            // Add a thinking message with the typing indicator
+            this.thinkingMessageId = this.generateId();
+            this.appendThinkingMessage(this.thinkingMessageId, messageId);
+            
+            // Use the existing fetch call pattern from sendMessage
+            try {
+                if (this.state.eventSource) {
+                    this.state.eventSource.close();
+                    this.state.eventSource = null;
+                }
+    
+                this.state.eventSource = new EventSource('/chat/eventstream');
+                this.state.eventSource.onopen = (event) => {
+                    console.log('SSE connection established');
+                }
+                this.state.eventSource.onmessage = (event) => {
+                    console.log('SSE message received:', event.data);
+                    this.displayEvent(event.data);
+                }
+                this.state.eventSource.onclose = (event) => {
+                    console.log('SSE connection closed:', event);
+                }
+    
+                // Send edited message to get AI response
+                fetch('/chat/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        message: messageText,
+                        messageId: messageId,
+                        conversation_history: this.state.messageHistory
+                    })
+                });
+    
+                // We don't need to generate a title for edited messages
+                
+            } catch (error) {
+                console.error('Error sending edited message:', error);
+                this.removeThinkingMessage(this.thinkingMessageId);
+                this.appendErrorMessage('Sorry, there was an error processing your edited message.');
+                
+                // Restore original history
+                this.state.messageHistory = originalHistory;
             }
             
-            const data = await response.json();
-            
-            // Remove thinking message
-            this.removeThinkingMessage(thinkingMessageId);
-            
-            // Show AI response
-            this.appendMessage('assistant', data.content, data.id, messageId);
-            
-            // No need to generate title for edited messages
-            // Just save with the existing title
-            const firstUserMessage = this.state.messageHistory.find(msg => msg.sender === 'user');
-            this.saveCurrentConversation();
-            
         } catch (error) {
-            console.error('Error sending edited message:', error);
-            this.removeThinkingMessage(thinkingMessageId);
+            console.error('Error in reSendEditedMessage:', error);
+            this.removeThinkingMessage(this.thinkingMessageId);
             this.appendErrorMessage('Sorry, there was an error processing your edited message.');
         } finally {
             this.state.isProcessing = false;
+            this.state.editedMessageId = null;
         }
     }
     
@@ -833,10 +1061,8 @@ class CatalystChat {
         // If we should switch to new chat (not just initializing)
         if (shouldSwitchToNew) {
             // Save the current conversation first if it has messages
-            if (this.state.messageHistory.length > 0) {
-                const firstUserMessage = this.state.messageHistory.find(msg => msg.sender === 'user');
+            if (this.state.messageHistory.length > 0)
                 this.saveCurrentConversation();
-            }
             
             // Clear the chat interface
             while (this.elements.chatMessages.children.length > 1) {
@@ -850,9 +1076,26 @@ class CatalystChat {
         // Create new conversation ID
         this.state.currentConversationId = this.generateId();
         this.state.currentTitle = "New Conversation";
+        this.state.currentIcon = "💬";
+
+        // Create a new conversation in the savedConversations array
+        const newConversation = {
+            id: this.state.currentConversationId,
+            title: this.state.currentTitle,
+            icon: this.state.currentIcon,
+            messages: [],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        };
         
-        // Add this new conversation to the saved list
-        this.saveCurrentConversation();
+        // Add the new conversation to the array
+        this.state.savedConversations.push(newConversation);
+        
+        // Save to local storage
+        this.saveConversationsToLocalStorage();
+        
+        // Render the conversation list
+        this.renderConversationList();
         
         // Focus on input
         this.elements.chatInput.focus();

@@ -10,7 +10,7 @@ import json
 import requests
 from typing import Dict, List, Any, Optional
 from .base import Tool, ToolResult
-
+from catalyst_agent.event_queue import EventQueue
 
 class WebSearchTool(Tool):
     """
@@ -30,7 +30,8 @@ class WebSearchTool(Tool):
                  cx_id: Optional[str] = None,  # For Google Custom Search
                  max_results: int = 5,
                  include_snippets: bool = True,
-                 filter_ads: bool = True):
+                 filter_ads: bool = True,
+                 event_queue: Optional[EventQueue] = None):
         """
         Initialize the web search tool.
         
@@ -44,7 +45,7 @@ class WebSearchTool(Tool):
             include_snippets: Whether to include text snippets in results
             filter_ads: Whether to filter out advertisements from results
         """
-        super().__init__(name, description)
+        super().__init__(name, description, event_queue=event_queue)
         
         if search_engine not in self.SUPPORTED_ENGINES:
             raise ValueError(f"Unsupported search engine: {search_engine}. "
