@@ -413,39 +413,49 @@ class CatalystChat {
             console.log('Title generation response:', titleData);
             
             if (titleData && titleData.title) {
-                // Update the title in the saved conversations array
+                // Store the ID we're updating to handle race conditions
+                const targetConversationId = this.state.currentConversationId;
+                
+                // Update the title in the current state
                 this.state.currentTitle = titleData.title;
                 this.state.currentIcon = titleData.icon || '💬';
+                
+                // Find the conversation in the saved array
                 const index = this.state.savedConversations.findIndex(
-                    c => c.id === this.state.currentConversationId
+                    c => c.id === targetConversationId
                 );
                 
-                console.log('Found conversation at index:', index, 'with ID:', this.state.currentConversationId);
+                console.log('Found conversation at index:', index, 'with ID:', targetConversationId);
                 
                 if (index !== -1) {
                     const previousTitle = this.state.savedConversations[index].title;
                     console.log('Previous title:', previousTitle);
                     
-                    // Create a deep copy of the savedConversations array to trigger state update
-                    const updatedConversations = [...this.state.savedConversations];
-                    updatedConversations[index] = {
-                        ...updatedConversations[index],
-                        title: titleData.title,
-                        icon: titleData.icon,
-                        updatedAt: new Date().toISOString()
-                    };
-                    
-                    console.log('Updated conversation object:', updatedConversations[index]);
-                    
-                    // Replace the entire array
-                    this.state.savedConversations = updatedConversations;
-                    
-                    console.log('Updated title to:', this.state.savedConversations[index].title);
-                    
-                    this.saveCurrentConversation();
-                    
-                    // Force re-render the conversation list
-                    this.renderConversationList();
+                    // Verify conversation ID still matches current ID
+                    if (this.state.savedConversations[index].id === this.state.currentConversationId) {
+                        // Create a deep copy of the savedConversations array to trigger state update
+                        const updatedConversations = [...this.state.savedConversations];
+                        updatedConversations[index] = {
+                            ...updatedConversations[index],
+                            title: titleData.title,
+                            icon: titleData.icon,
+                            updatedAt: new Date().toISOString()
+                        };
+                        
+                        console.log('Updated conversation object:', updatedConversations[index]);
+                        
+                        // Replace the entire array
+                        this.state.savedConversations = updatedConversations;
+                        
+                        console.log('Updated title to:', this.state.savedConversations[index].title);
+                        
+                        this.saveCurrentConversation();
+                        
+                        // Force re-render the conversation list
+                        this.renderConversationList();
+                    } else {
+                        console.warn('Conversation ID mismatch, title update aborted');
+                    }
                 }
             }
         } catch (error) {
