@@ -677,6 +677,8 @@ class CatalystChat {
             // Replace \[ and \] with $$, Replace \( and \) with $
             formattedContent = formattedContent.replace(/\\\[/g, '$$').replace(/\\\]/g, '$$')
             formattedContent = formattedContent.replace(/\\\(/g, '$').replace(/\\\)/g, '$');
+            // replace sandbox: with website url
+            formattedContent = formattedContent.replace(/sandbox:/g, 'http://localhost:5000/');
             formattedContent = this.formatMarkdown(formattedContent);
         }
         
