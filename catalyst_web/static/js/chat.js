@@ -183,15 +183,15 @@ class CatalystChat {
                     iconHtml = `<span class="conversation-icon">${emojiMatch[1]}</span>`;
                     displayTitle = conversation.title.replace(/^\p{Emoji}/u, '').trim();
                 } else {
-                    iconHtml = '<span class="conversation-icon">💬</span>';
+                    iconHtml = '<span class="conversation-icon">❌</span>';
                 }
             }
 
-            // Conditionally render delete button (hide if active conversation)
-            const deleteButtonHtml = conversation.id !== this.state.currentConversationId ? `
+            // Render delete button for all conversations
+            const deleteButtonHtml = `
                 <button class="delete-conversation-btn" title="Delete conversation">
                     <i class="fas fa-trash"></i>
-                </button>` : '';
+                </button>`;
 
             itemDiv.innerHTML = `
                 ${iconHtml}
@@ -208,7 +208,7 @@ class CatalystChat {
                 this.loadConversation(conversation.id);
             });
 
-            // Add delete button handler if button exists
+            // Add delete button handler
             const deleteBtn = itemDiv.querySelector('.delete-conversation-btn');
             if (deleteBtn) {
                 deleteBtn.addEventListener('click', (e) => {
@@ -234,12 +234,12 @@ class CatalystChat {
         
         const conversationData = {
             id: this.state.currentConversationId,
-            title: this.state.currentTitle || 'New Conversation',
-            icon: this.state.currentIcon || '💬',
+            title: this.state.currentTitle || 'Default Saved Title',
+            icon: this.state.currentIcon || '💾', // Changed default icon to a save icon
             messages: this.state.messageHistory,
             createdAt: existingIndex >= 0 ? 
-                this.state.savedConversations[existingIndex].createdAt : 
-                new Date().toISOString(),
+            this.state.savedConversations[existingIndex].createdAt : 
+            new Date().toISOString(),
             updatedAt: new Date().toISOString()
         };
 
@@ -257,7 +257,7 @@ class CatalystChat {
         this.saveConversationsToLocalStorage();
         
         // Update the UI
-        this.renderConversationList();
+        // this.renderConversationList();
     }
     
     /**
@@ -270,6 +270,8 @@ class CatalystChat {
         
         // Update current conversation ID
         this.state.currentConversationId = conversationId;
+        this.state.currentTitle = conversation.title;
+        this.state.currentIcon = conversation.icon || '❓';
         
         // Clear the current messages
         while (this.elements.chatMessages.children.length > 1) {
@@ -428,7 +430,7 @@ class CatalystChat {
                 
                 // Update the title in the current state
                 this.state.currentTitle = titleData.title;
-                this.state.currentIcon = titleData.icon || '💬';
+                this.state.currentIcon = titleData.icon || '❓';
                 
                 // Find the conversation in the saved array
                 const index = this.state.savedConversations.findIndex(
@@ -672,6 +674,9 @@ class CatalystChat {
         
         // Format markdown content if it's from the assistant
         if (sender === 'assistant') {
+            // Replace \[ and \] with $$, Replace \( and \) with $
+            formattedContent = formattedContent.replace(/\\\[/g, '$$').replace(/\\\]/g, '$$')
+            formattedContent = formattedContent.replace(/\\\(/g, '$').replace(/\\\)/g, '$');
             formattedContent = this.formatMarkdown(formattedContent);
         }
         
@@ -1125,7 +1130,7 @@ class CatalystChat {
         this.state.savedConversations.push(newConversation);
         
         // Save to local storage
-        this.saveConversationsToLocalStorage();
+        // this.saveConversationsToLocalStorage();
         
         // Render the conversation list
         this.renderConversationList();
