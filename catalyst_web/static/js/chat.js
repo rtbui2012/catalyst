@@ -1015,15 +1015,30 @@ class CatalystChat {
      */
     formatMarkdown(text) {
         // Use marked.js to convert markdown to HTML
-        var htmlContent = marked.parse(text);
+        let htmlContent = marked.parse(text);
+
+        // Function to handle mermaid code blocks
+        const handleMermaid = (element) => {
+            element.querySelectorAll('pre code.language-mermaid').forEach((block) => {
+                // Create a container for the mermaid diagram
+                const mermaidContainer = document.createElement('div');
+                mermaidContainer.className = 'mermaid';
+                mermaidContainer.innerHTML = block.textContent;
+
+                // Replace the code block with the mermaid container
+                block.parentNode.parentNode.replaceChild(mermaidContainer, block.parentNode);
+            });
+            mermaid.contentLoaded();
+        };
 
         // After converting to HTML, initialize syntax highlighting
-        setTimeout(() => {         
+        setTimeout(() => {
             document.querySelectorAll('pre code').forEach((block) => {
                 hljs.highlightBlock(block);
             });
+            handleMermaid(document);
         }, 0);
-        
+
         return htmlContent;
     }
     
