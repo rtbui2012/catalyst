@@ -10,16 +10,6 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Make the chat app instance available globally for the displayEvent function
     window.chatAppInstance = chatApp;
-
-    // renderMathInElement(document.body, {
-    //     delimiters: [
-    //         {left: '$$', right: '$$', display: true},
-    //         {left: '$', right: '$', display: false},
-    //         {left: '\\(', right: '\\)', display: false},
-    //         {left: '\\[', right: '\\]', display: true}
-    //     ],
-    //     throwOnError: false
-    // });
 });
 
 
