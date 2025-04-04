@@ -1098,7 +1098,17 @@ class CatalystChat {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
     }
-    
+
+    clearChatHistory() {
+            // Clear the chat interface
+            while (this.elements.chatMessages.children.length > 1) {
+                this.elements.chatMessages.removeChild(this.elements.chatMessages.lastChild);
+            }
+            
+            // Reset message history
+            this.state.messageHistory = [];    
+    }
+
     /**
      * Start a new chat conversation
      */
@@ -1109,13 +1119,7 @@ class CatalystChat {
             if (this.state.messageHistory.length > 0)
                 this.saveCurrentConversation();
             
-            // Clear the chat interface
-            while (this.elements.chatMessages.children.length > 1) {
-                this.elements.chatMessages.removeChild(this.elements.chatMessages.lastChild);
-            }
-            
-            // Reset message history
-            this.state.messageHistory = [];
+            this.clearChatHistory();
         }
         
         // Create new conversation ID
