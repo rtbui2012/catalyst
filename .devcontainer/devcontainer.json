@@ -10,14 +10,12 @@
 		"ghcr.io/devcontainers/features/aws-cli:1": {}
 	},
 
-	// Features to add to the dev container. More info: https://containers.dev/features.
-	// "features": {},
 
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
 	// "forwardPorts": [],
 
 	// Use 'postCreateCommand' to run commands after the container is created.
-	// "postCreateCommand": "pip3 install --user -r requirements.txt",
+	"postCreateCommand": "touch /home/vscode/.bash_history; touch /home/vscode/.bashrc; echo '\n# --- History & Alias Persistence ---\nexport HISTCONTROL=ignoreboth\nshopt -s histappend\nexport HISTSIZE=10000\nexport HISTFILESIZE=20000\nalias ll=\"ls -alF\"\n' | tee -a /home/vscode/.bashrc",
 
 	// Configure tool-specific properties.
 	// "customizations": {},
@@ -27,9 +25,30 @@
 
 	"mounts": [
 		{
-			"source": "c:/Users/rt_bu/.ssh",
+			"source": "${localEnv:USERPROFILE}/.ssh",
 			"target": "/home/vscode/.ssh",
 			"type": "bind"
+		},
+		{
+			"source": "python_modules",
+			"target": "/home/vscode/.local",
+			"type": "volume"
+		},
+		{
+			"source": "bashhistory", // Name of the volume
+			"target": "/home/vscode/.bash_history", // Mount the history file directly
+			"type": "volume"
 		}
-	]
+	],
+
+	// Configure tool-specific properties.
+	"customizations": {
+		// Configure properties specific to VS Code.
+		"vscode": {
+			// Add the IDs of extensions you want installed when the container is created.
+			"extensions": [
+				"rooveterinaryinc.roo-cline"
+			]
+		}
+	}
 }

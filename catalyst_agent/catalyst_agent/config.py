@@ -15,10 +15,10 @@ class AgentConfig:
     
     # Model configuration
     model_name: str = "gpt-4o"
-    api_type: str = "azure"  # "azure" or "openai"
+    api_type: str = "azure"  # Deprecated? Provider logic now uses llm_provider
+    llm_provider: str = "azure" # "azure" or "gemini"
     temperature: float = 0.7
     max_tokens: int = 1000
-    
     # Agent behavior configuration
     planning_enabled: bool = True
     self_improvement_enabled: bool = False
@@ -42,7 +42,8 @@ class AgentConfig:
         """Convert configuration to dictionary format."""
         return {
             "model_name": self.model_name,
-            "api_type": self.api_type,
+            "api_type": self.api_type, # Keep for potential backward compatibility?
+            "llm_provider": self.llm_provider,
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
             "planning_enabled": self.planning_enabled,

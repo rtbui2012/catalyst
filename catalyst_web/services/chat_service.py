@@ -43,7 +43,13 @@ class ChatService:
         # Initialize the Catalyst Core agent if available
         try:
             logger.info("Initializing Catalyst Core agent")
-            config = AgentConfig(blob_storage_path="./blob_storage")
+            # Read LLM_PROVIDER from environment when creating config
+            llm_provider_env = os.getenv("LLM_PROVIDER", "azure") # Default to azure if not set
+            logger.info(f"ChatService using LLM_PROVIDER from env: {llm_provider_env}")
+            config = AgentConfig(
+                blob_storage_path="./blob_storage",
+                llm_provider=llm_provider_env
+            )
             self.agent = AgentCore(config)
         except Exception as e:
             logger.error(f"Failed to initialize Catalyst Core agent: {str(e)}")
@@ -148,5 +154,12 @@ class ChatService:
         return Response(generate(), mimetype='text/event-stream')
 
 # Create a singleton instance
-agent_core = AgentCore(AgentConfig(blob_storage_path="./blob_storage"))
-chat_service = ChatService(agent=agent_core)
+# Read LLM_PROVIDER from environment when creating config for the singleton
+llm_provider_env_singleton = os.getenv("LLM_PROVIDER", "azure")
+logger.info(f"ChatService singleton using LLM_PROVIDER from env: {llm_provider_env_singleton}")
+singleton_config = AgentConfig(
+    blob_storage_path="./blob_storage",
+    llm_provider=llm_provider_env_singleton
+)
+agent_core = AgentCore(singleton_config)
+chat_service = ChatService(agent=agent_core) # Pass the pre-configured agent

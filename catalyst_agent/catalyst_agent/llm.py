@@ -1,18 +1,22 @@
 """
-LLM integration for Agentic Core.
+LLM Manager for Agentic Core.
 
-This module provides integration with Azure OpenAI for the Agentic Core,
-enabling language model capabilities for planning, response generation,
-and other AI-powered features.
+This module provides the LLMManager class, which orchestrates interactions
+with a configured language model (LLM) provider through an abstraction layer.
+It handles planning, response generation, plan reevaluation, and token estimation.
 """
 
-import os
 import logging
 import json
 import textwrap
-from typing import List, Dict, Any, Optional, Union
-import tiktoken
-from openai import AzureOpenAI
+from typing import List, Dict, Any, Optional
+
+# LLM Abstraction and Concrete Implementation
+from .llm_base import BaseLLM
+from .llm_azure import AzureOpenAILLM
+from .llm_gemini import GeminiLLM # Add Gemini import
+from .config import AgentConfig
+from .utils import setup_logger
 
 from .config import AgentConfig
 from .utils import setup_logger
@@ -26,73 +30,66 @@ class LLMManager:
     """
     Manager for LLM interactions in the Agentic Core.
     
-    This class handles all interactions with the language model,
-    including planning, response generation, and other AI capabilities.
+    This class handles interactions with a configured language model via the BaseLLM interface,
+    including planning, response generation, plan reevaluation, and token estimation.
+    It can be injected with any LLM implementation that adheres to the BaseLLM interface.
     """
     
-    def __init__(self, config: AgentConfig, event_queue: EventQueue = None):
+    def __init__(self, config: AgentConfig, event_queue: Optional[EventQueue] = None, llm_client: Optional[BaseLLM] = None):
         """
         Initialize the LLM manager.
-        
+
         Args:
-            config: Agent configuration with LLM settings
+            config: Agent configuration object.
+            event_queue: Optional event queue for logging events.
+            llm_client: Optional pre-configured LLM client instance adhering to BaseLLM.
+                        If None, defaults to creating an AzureOpenAILLM instance.
         """
         self.config = config
         self.logger = setup_logger('agentic.llm', 
                                   logging.DEBUG if config.verbose else logging.INFO)
         
-        # Initialize the OpenAI client
-        self._initialize_client()
-
         # Initialize event queue
         self.event_queue = event_queue or EventQueue()
-        
-        # Initialize tokenizer for token counting
-        try:
-            self._tokenizer = tiktoken.encoding_for_model(self.config.model_name)
-            self.logger.info(f"Initialized tokenizer for model: {self.config.model_name}")
-        except Exception as e:
-            self.logger.warning(f"Failed to initialize tokenizer for {self.config.model_name}: {e}")
-            self._tokenizer = None
-            
-        # Initialize current date if not already set in config metadata
-        if not hasattr(self.config, 'metadata') or not self.config.metadata or 'current_date' not in self.config.metadata:
-            # Set default current date to today
+
+        # Initialize the LLM client (dependency injection or based on config)
+        if llm_client:
+            self.llm_client = llm_client
+            self.logger.info(f"Using provided LLM client: {type(llm_client).__name__}")
+        else:
+            llm_provider = getattr(config, 'llm_provider', 'azure').lower() # Default to azure
+            self.logger.info(f"No LLM client provided, initializing based on config: LLM_PROVIDER='{llm_provider}'")
+
+            try:
+                if llm_provider == 'gemini':
+                    # Assuming GeminiLLM constructor doesn't need config/logger directly
+                    # but reads from env vars via get_config inside its __init__
+                    self.llm_client = GeminiLLM()
+                    self.logger.info("Initialized GeminiLLM client.")
+                elif llm_provider == 'azure':
+                    self.llm_client = AzureOpenAILLM(config, self.logger)
+                    self.logger.info("Initialized AzureOpenAILLM client.")
+                else:
+                    self.logger.error(f"Unsupported LLM provider specified: {llm_provider}")
+                    raise ValueError(f"Unsupported LLM provider: {llm_provider}")
+
+            except Exception as e:
+                self.logger.error(f"Failed to initialize {llm_provider.upper()} LLM client: {e}")
+                raise ValueError(f"LLM client initialization failed for provider {llm_provider}.") from e
+
+        self.logger.info(f"LLM Manager initialized with model: {self.llm_client.model_name}")
+
+        # Initialize current date in config metadata if not present
+        if not hasattr(self.config, 'metadata') or self.config.metadata is None:
+            self.config.metadata = {}
+        if 'current_date' not in self.config.metadata:
             import datetime
             current_date = datetime.datetime.now().strftime("%B %d, %Y")
-            if not hasattr(self.config, 'metadata'):
-                self.config.metadata = {}
             self.config.metadata['current_date'] = current_date
-            self.logger.info(f"Initialized current_date in LLMManager: {current_date}")
+            self.logger.info(f"Initialized default current_date in LLMManager: {current_date}")
     
-    def _initialize_client(self):
-        """Initialize the Azure OpenAI client with configuration settings."""
-        # Get API key and endpoint
-        api_key = os.getenv("AZURE_OPENAI_API_KEY", "")
-        endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "")
-        api_version = os.getenv("OPENAI_API_VERSION", "2024-02-15-preview")
-        
-        # Validate configuration
-        if not api_key:
-            self.logger.error("Azure OpenAI API key not found in environment variables")
-            raise ValueError("Azure OpenAI API key is required")
-        
-        if not endpoint:
-            self.logger.error("Azure OpenAI endpoint not found in environment variables")
-            raise ValueError("Azure OpenAI endpoint is required")
-        
-        # Initialize client
-        try:
-            self.client = AzureOpenAI(
-                api_key=api_key,
-                api_version=api_version,
-                azure_endpoint=endpoint
-            )
-            self.logger.info(f"Initialized Azure OpenAI client with endpoint: {endpoint}")
-        except Exception as e:
-            self.logger.error(f"Failed to initialize Azure OpenAI client: {e}")
-            raise
-    
+    # Removed _initialize_client method - handled by specific LLM implementation
+
     def _get_temporal_context(self, context: Dict[str, Any]) -> Optional[str]:
         """ Get the current date from the context or config metadata. """       
         
@@ -105,21 +102,8 @@ class LLMManager:
             current_date = config_metadata.get('current_date')
         
         return current_date
-    
-    def generate_plan(self, goal: str, context: Dict[str, Any]) -> Dict[str, Any]:
-        """ Generate a plan for a given goal using the language model. """
-
-        # Get available tools for planning
-        tools = context.get('available_tools', [])
-        
-        # Get temporal context
-        current_date = self._get_temporal_context(context)
-        
-        # Log availability of temporal context
-        if not current_date:
-            self.logger.warning("No temporal context found in planning context")
-        
-        # Create detailed tool descriptions with parameter schemas
+    def _format_tool_descriptions(self, tools: List[Any]) -> str:
+        """ Formats tool descriptions including parameters for the LLM prompt. """
         tool_details = []
         for tool in tools:
             schema = tool.get_schema() if hasattr(tool, 'get_schema') else {}
@@ -143,7 +127,24 @@ class LLMManager:
                 
             tool_details.append(tool_detail)
         
-        tool_descriptions = "\n".join(tool_details)
+        return "\n".join(tool_details)
+
+    
+    def generate_plan(self, goal: str, context: Dict[str, Any]) -> Dict[str, Any]:
+        """ Generate a plan for a given goal using the language model. """
+
+        # Get available tools for planning
+        tools = context.get('available_tools', [])
+        
+        # Get temporal context
+        current_date = self._get_temporal_context(context)
+        
+        # Log availability of temporal context
+        if not current_date:
+            self.logger.warning("No temporal context found in planning context")
+        
+        # Format tool descriptions using the helper method
+        tool_descriptions = self._format_tool_descriptions(tools)
         
         # Get conversation history for context
         conversation_history = context.get('conversation_history', '')
@@ -169,8 +170,7 @@ class LLMManager:
         self.logger.info(f"Generating plan for goal: {goal}")
         
         try:
-            response = self.client.chat.completions.create(
-                model=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", self.config.model_name),
+            response_dict = self.llm_client.chat_completion(
                 messages=[
                     {"role": "system", "content": system_message},
                     {"role": "user", "content": user_message}
@@ -181,7 +181,8 @@ class LLMManager:
             )
             
             # Extract and return the plan
-            content = response.choices[0].message.content
+            # Assuming response_dict follows the structure defined in BaseLLM docstring
+            content = response_dict['choices'][0]['message']['content']
 
             self.logger.info(f"Received plan response: {content}")  
             
@@ -290,18 +291,18 @@ class LLMManager:
         self.logger.info(f"Generating response for message: {message}")
         
         try:
-            response = self.client.chat.completions.create(
-                model=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", self.config.model_name),
+            response_dict = self.llm_client.chat_completion(
                 messages=[
                     {"role": "system", "content": system_message},
                     {"role": "user", "content": user_message}
                 ],
                 temperature=self.config.temperature,
                 max_tokens=self.config.max_tokens
+                # No specific response_format needed here based on original code
             )
             
             # Extract and return the response
-            content = response.choices[0].message.content
+            content = response_dict['choices'][0]['message']['content']
             
             self.logger.info(f"Final Solution: {content}")
             return content
@@ -312,19 +313,15 @@ class LLMManager:
     
     def estimate_tokens(self, text: str) -> int:
         """
-        Estimate the number of tokens in a text.
-        
+        Estimate the number of tokens in a text using the configured LLM client.
+
         Args:
-            text: The text to estimate tokens for
-            
+            text: The text to estimate tokens for.
+
         Returns:
-            Estimated number of tokens
+            Estimated number of tokens.
         """
-        if self._tokenizer:
-            return len(self._tokenizer.encode(text))
-        else:
-            # Fallback estimation (rough approximation)
-            return len(text) // 4
+        return self.llm_client.estimate_tokens(text)
     
     def reevaluate_plan(self, goal: str, current_plan: Dict[str, Any], 
                        executed_steps: List[Dict[str, Any]], 
@@ -340,27 +337,8 @@ class LLMManager:
         # Get available tools for planning
         tools = context.get('available_tools', [])
         
-        # Create detailed tool descriptions with parameter schemas
-        tool_details = []
-        for tool in tools:
-            schema = tool.get_schema() if hasattr(tool, 'get_schema') else {}
-            tool_detail = f"- {tool.name}: {tool.description}\n"
-            
-            # Add parameter details if available
-            if 'parameters' in schema:
-                tool_detail += "  Parameters:\n"
-                for param_name, param_info in schema['parameters'].items():
-                    required = param_info.get('required', False)
-                    req_text = "REQUIRED" if required else "optional"
-                    tool_detail += f"    - {param_name} ({req_text}): {param_info.get('description', '')}\n"
-                    
-                    # Add enum values if available
-                    if 'enum' in param_info:
-                        tool_detail += f"      Allowed values: {', '.join(str(v) for v in param_info['enum'])}\n"
-            
-            tool_details.append(tool_detail)
-        
-        tool_descriptions = "\n".join(tool_details)
+        # Format tool descriptions using the helper method
+        tool_descriptions = self._format_tool_descriptions(tools)
         
         # Format executed steps
         executed_steps_str = ""
@@ -408,8 +386,7 @@ class LLMManager:
         self.logger.info(f"user_message: {user_message}")
         
         try:
-            response = self.client.chat.completions.create(
-                model=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", self.config.model_name),
+            response_dict = self.llm_client.chat_completion(
                 messages=[
                     {"role": "system", "content": system_message},
                     {"role": "user", "content": user_message}
@@ -420,7 +397,7 @@ class LLMManager:
             )
             
             # Extract and parse the response
-            content = response.choices[0].message.content
+            content = response_dict['choices'][0]['message']['content']
             self.logger.info(f"Received plan reevaluation response: {content}")
             
             try:
