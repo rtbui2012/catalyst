@@ -15,7 +15,7 @@
 	// "forwardPorts": [],
 
 	// Use 'postCreateCommand' to run commands after the container is created.
-	"postCreateCommand": "touch /home/vscode/.bash_history; touch /home/vscode/.bashrc; echo '\n# --- History & Alias Persistence ---\nexport HISTCONTROL=ignoreboth\nshopt -s histappend\nexport HISTSIZE=10000\nexport HISTFILESIZE=20000\nalias ll=\"ls -alF\"\n' | tee -a /home/vscode/.bashrc",
+	"postCreateCommand": "touch /home/vscode/.bash_history; touch /home/vscode/.bashrc; echo '\n# --- History & Alias Persistence ---\nexport HISTCONTROL=ignoreboth\nshopt -s histappend\nexport HISTSIZE=10000\nexport HISTFILESIZE=20000\nalias ll=\"ls -alF\"\n' | tee -a /home/vscode/.bashrc && sudo chown vscode:vscode /home/vscode/.local",
 
 	// Configure tool-specific properties.
 	// "customizations": {},
