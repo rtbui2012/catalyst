@@ -26,6 +26,5 @@
 	// "remoteUser": "root",
 
 	"mounts": [
-		"source=c:/Users/RBui/.aws,target=/home/vscode/.aws,type=bind"
 	]
 }
