@@ -880,37 +880,20 @@ class CatalystChat {
             messageActions.style.display = '';
         }
 
-        // Try multiple strategies to find all assistant messages to delete
-        
-        // Collect all messages to remove (all messages after the edited one)
-        const messagesToRemove = [];
-        let currentElement = messageElement.nextElementSibling;
-        
-        // Log each element for debugging
-        console.log('Messages after edited one:');
-        while (currentElement) {
-            console.log(currentElement);
-            messagesToRemove.push(currentElement);
-            currentElement = currentElement.nextElementSibling;
+        // Remove subsequent DOM elements directly
+        // console.log(`Editing message ID: ${messageId}. Removing subsequent DOM elements.`); // Keep commented out or remove
+        let nextSibling = messageElement.nextElementSibling;
+        while (nextSibling) {
+            const siblingToRemove = nextSibling;
+            nextSibling = nextSibling.nextElementSibling; // Get next before removing current
+            // console.log(`Removing DOM element with ID: ${siblingToRemove.dataset.id}`); // Keep commented out or remove
+            siblingToRemove.remove();
         }
-        
-        // Also collect the IDs for message history cleanup
-        const messageIdsToRemove = [];
-        messagesToRemove.forEach(msg => {
-            if (msg.dataset.id) {
-                messageIdsToRemove.push(msg.dataset.id);
-            }
-        });
-        
-        // Remove all messages that come after the edited message
-        messagesToRemove.forEach(msg => msg.remove());
-        
-        // Remove these messages from history
-        if (messageIdsToRemove.length > 0) {
-            this.state.messageHistory = this.state.messageHistory.filter(
-                msg => !messageIdsToRemove.includes(msg.id)
-            );
-        }
+
+        // Update the message history by removing subsequent messages (this part was correct)
+        // const originalHistoryLength = this.state.messageHistory.length; // Keep commented out or remove
+        this.state.messageHistory = this.state.messageHistory.slice(0, messageIndex + 1);
+        // console.log(`History truncated from ${originalHistoryLength} to ${this.state.messageHistory.length} messages. Last message ID: ${this.state.messageHistory[this.state.messageHistory.length - 1]?.id}`); // Keep commented out or remove
 
         this.saveCurrentConversation();
 
@@ -927,13 +910,11 @@ class CatalystChat {
             // Store the edited message ID for reference
             this.state.editedMessageId = messageId;
             
-            // Temporarily store current message history
+            // The message history should already be correctly truncated by saveEdit.
+            // We keep the original history copy only for potential error recovery.
             const originalHistory = [...this.state.messageHistory];
             
-            // Filter out responses that were generated after the edited message
-            this.state.messageHistory = this.state.messageHistory.filter(msg => {
-                return msg.id === messageId || !msg.reference_id || msg.reference_id !== messageId;
-            });
+            // No need to filter history again here as saveEdit handles it.
             
             // Set up for processing new message
             this.state.isProcessing = true;

@@ -269,7 +269,16 @@ class LLMManager:
             conversation_history=conversation_history
         )
         
-        if current_plan:
+        # Only include plan details if it's not the simple default plan
+        is_default_plan = (
+            current_plan and
+            len(current_plan.steps) == 1 and
+            current_plan.steps[0].description == "Analyze the request and respond to the user" and
+            current_plan.steps[0].tool_name is None
+        )
+
+        if current_plan and not is_default_plan:
+            self.logger.info("Including non-default plan details in response generation prompt.")
             plan_str = textwrap.dedent(f"""
                 CURRENT PLAN:
                 Goal: {current_plan.goal}
@@ -280,12 +289,14 @@ class LLMManager:
                 plan_str += f"{i}. [{step.status.value}] {step.description}\n"
                 if step.tool_name:
                     plan_str += f"   Tool: {step.tool_name}\n"
-                if step.result:
+                if step.result and step.result != "Step completed successfully": # Avoid showing default result
                     plan_str += f"   Result: {step.result}\n"
                 if step.error:
                     plan_str += f"   Error: {step.error}\n"
             
-            user_message += plan_str
+            user_message += "\n\n" + plan_str # Add spacing before plan details
+        elif is_default_plan:
+             self.logger.info("Skipping default plan details in response generation prompt.")
         
         # Generate a response using the LLM
         self.logger.info(f"Generating response for message: {message}")

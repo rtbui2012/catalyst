@@ -84,8 +84,16 @@ class LLMPlanner(Planner):
                 # Log the plan
                 self.logger.info(f"Generated plan with {len(plan.steps)} steps")
                 
-                # If the plan is empty, add a default step
+                # If the plan is empty, ensure reasoning is set and add a default step
                 if len(plan.steps) == 0:
+                    # Ensure reasoning is captured even for empty plans
+                    if 'reasoning' in plan_data:
+                        plan.metadata['reasoning'] = plan_data['reasoning']
+                    else:
+                        # Add default reasoning if none provided by LLM for empty plan
+                        plan.metadata['reasoning'] = "The request is simple and requires a direct response without tools."
+                        self.logger.info("Added default reasoning for empty plan.")
+                        
                     plan.add_step(PlanStep(
                         description="Analyze the request and respond to the user",
                         tool_name=None
