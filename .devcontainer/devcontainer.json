@@ -26,5 +26,10 @@
 	// "remoteUser": "root",
 
 	"mounts": [
+		{
+			"source": "c:/Users/rt_bu/.ssh",
+			"target": "/home/vscode/.ssh",
+			"type": "bind"
+		}
 	]
 }
