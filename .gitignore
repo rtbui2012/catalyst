@@ -55,5 +55,6 @@ output/
 generated/
 **/generated_images/
 **/outputs/
-catalyst_web/blob_storage/
+blob_storage/
+data/
 

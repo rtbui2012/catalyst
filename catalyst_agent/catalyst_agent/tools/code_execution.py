@@ -16,6 +16,7 @@ import json
 import io
 import contextlib
 from .base import Tool, ToolResult
+import logging
 from catalyst_agent.event_queue import EventQueue
 
 
@@ -30,9 +31,10 @@ class DynamicCodeExecutionTool(Tool):
     def __init__(self, 
                  name: str = "execute_python", 
                  description: str = "Execute Python code dynamically and return the results. "
-                   "This is very flexible and can be used when other tools fail."
-                   "Your code should output to stdout or stderr, and return a value if needed. "
-                   "If your code writes to a file, stream the full path of the file into stdout. ",
+                  "This is very flexible and can be used when other tools fail. "
+                  "Your code should output results to stdout. If your code writes a file (e.g., an image, a document) to the './blob_storage' directory, "
+                  "print the relative path (e.g., './blob_storage/my_image.png') to stdout. "
+                  "When generating Markdown links or references for files saved in './blob_storage', use the URL path '/blob_storage/' followed by the filename (e.g., '/blob_storage/my_image.png').",
                  max_execution_time: int = 30,
                  allowed_imports: Optional[list] = None,
                  event_queue: Optional[EventQueue] = None):
@@ -49,6 +51,8 @@ class DynamicCodeExecutionTool(Tool):
         super().__init__(name, description, event_queue=event_queue)
         self.max_execution_time = max_execution_time
         self.allowed_imports = allowed_imports
+        # Initialize logger for the tool instance
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
     
     def execute(self, code: str, variables: Optional[Dict[str, Any]] = None) -> ToolResult:
         """
@@ -64,11 +68,7 @@ class DynamicCodeExecutionTool(Tool):
         if not code or not isinstance(code, str):
             return ToolResult.error_result("Code must be a non-empty string")
         
-        # save to this files directory/../../../.tmp/agent_code_<uuid>.py
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".py", 
-                dir=os.path.join(os.path.dirname(__file__), "../../../.tmp")) as temp_file:
-            temp_file.write(code.encode('utf-8'))
-
+        # Removed temporary file creation - will execute code string directly
         # Create string buffers for capturing stdout/stderr
         stdout_buffer = io.StringIO()
         stderr_buffer = io.StringIO()
@@ -93,7 +93,9 @@ class DynamicCodeExecutionTool(Tool):
             
             # Execute the code and capture stdout/stderr
             with contextlib.redirect_stdout(stdout_buffer), contextlib.redirect_stderr(stderr_buffer):
-                exec(code, globals(), exec_locals)
+                # Execute the code string directly
+                compiled_code = compile(code, '<string>', 'exec')
+                exec(compiled_code, globals(), exec_locals)
                 
                 # Get the return value if there was one
                 if has_return:
@@ -111,11 +113,32 @@ class DynamicCodeExecutionTool(Tool):
 
             print(f"Code execution std result: {result_data}")
             
-            # Include warning in result if stderr is not empty
+            # Check stderr and stdout for actual error patterns
+            execution_error = None
+            error_keywords = ["error", "exception", "traceback", "failed"] # Case-insensitive check below
+
             if stderr:
-                result_data["warnings"] = "Code execution produced errors or warnings. Check stderr for details."
-            
-            return ToolResult.success_result(result_data)
+                stderr_lower = stderr.lower()
+                # Check if stderr contains actual error keywords
+                if any(keyword in stderr_lower for keyword in error_keywords):
+                    execution_error = f"Code execution produced error messages on stderr:\n{stderr}"
+                else:
+                    # Log non-error stderr content as warning but don't fail automatically
+                    self.logger.warning(f"Code execution produced non-error output on stderr (e.g., progress bar):\n{stderr}")
+
+            # Check stdout for "Error:" only if no critical error found in stderr yet
+            if not execution_error and "error:" in stdout.lower():
+                 self.logger.debug("Found 'Error:' pattern in stdout.")
+                 execution_error = f"Code execution produced potential error messages on stdout:\n{stdout}"
+
+            if execution_error:
+                self.logger.warning(f"Code execution flagged as failed due to detected errors: {execution_error}")
+                # Return failure result only if specific error patterns were detected
+                return ToolResult(success=False, data=result_data, error=execution_error)
+            else:
+                # No apparent errors in output, return success
+                self.logger.info(f"Code execution successful. stdout: {stdout[:100]}..., stderr: {stderr[:100]}...")
+                return ToolResult.success_result(result_data)
             
         except Exception as e:
             # Get the traceback information

@@ -184,11 +184,21 @@ class LLMManager:
             # Assuming response_dict follows the structure defined in BaseLLM docstring
             content = response_dict['choices'][0]['message']['content']
 
-            self.logger.info(f"Received plan response: {content}")  
+            # Removed redundant logging of raw response here; it's logged on error if parsing fails.
             
+            # Attempt to extract JSON from markdown fences if present
+            extracted_json = content
+            if content.strip().startswith("```json"):
+                extracted_json = content.split("```json")[1].split("```")[0].strip()
+                self.logger.info("Extracted JSON content from markdown fences.")
+            elif content.strip().startswith("```"):
+                 # Handle cases with just ``` ```
+                extracted_json = content.split("```")[1].split("```")[0].strip()
+                self.logger.info("Extracted JSON content from generic markdown fences.")
+
             try:
-                plan_data = json.loads(content)
-                self.logger.info(f"Successfully generated plan with {len(plan_data.get('plan', []))} steps")
+                plan_data = json.loads(extracted_json)
+                self.logger.info(f"Successfully parsed plan JSON with {len(plan_data.get('plan', []))} steps")
 
                 self.event_queue.add_planning(
                     goal=goal,
@@ -198,7 +208,8 @@ class LLMManager:
 
                 return plan_data
             except json.JSONDecodeError as e:
-                self.logger.error(f"Failed to parse plan JSON: {e}. Response content: {content}")
+                # Log the full raw content when JSON parsing fails for better debugging
+                self.logger.error(f"Failed to parse plan JSON: {e}. Raw LLM response content that caused the error:\n---\n{content}\n---")
                 # Return a basic error plan
 
                 self.event_queue.add_error(

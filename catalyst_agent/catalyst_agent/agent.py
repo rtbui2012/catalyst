@@ -328,8 +328,8 @@ class AgentCore:
         self.executor = AgentExecutor(self)
         self.planning_engine = PlanningEngine(self.planner, self.executor, self.llm_manager)
     
-    def process_message(self, message: str, sender: str = "user") -> str:
-        """ Process an incoming message and generate a response. """
+    def process_message(self, message: str, sender: str = "user", conversation_history: Optional[List[Dict]] = None) -> str:
+        """ Process an incoming message and generate a response, optionally using provided history. """
 
         self.logger.info(f"Processing message from {sender}: {message}")
         
@@ -348,8 +348,13 @@ class AgentCore:
             self.logger.info(f"Set current_date in config metadata: {current_date}")
         
         # Create planning context
+        # Use provided history if available, otherwise use internal memory
+        history_for_context = conversation_history if conversation_history is not None else self.memory.get_conversation_history()
+        # Convert history to text format if needed by the LLM/planner
+        history_text = "\n".join([f"{msg.sender}: {msg.content}" for msg in history_for_context])
+
         context = {
-            'conversation_history': self.memory.get_conversation_history(as_text=True),
+            'conversation_history': history_text,
             'available_tools': self.tool_registry.get_all_tools(),
             'config': self.config.to_dict()
         }
@@ -664,19 +669,15 @@ class AgentCore:
                 self.logger.info("At least one recovery step succeeded, generating success response")
                 return self._generate_success_response(plan)
             
-            # All recovery attempts failed, generate a failure response
-            response_prompt = textwrap.dedent(f"""
-                The following task failed: "{plan.goal}"
-
-                The error occurred at step: "{failed_step.description}"
-                Error details: {error_details}
-
-                Recovery attempts were made but were unsuccessful.
-
-                Please generate a helpful response for the user about this failure, explaining what went wrong
-                and suggesting alternatives if possible.
-                """)
-            return self.llm_manager.generate_response(response_prompt, context)
+            # All recovery attempts failed, generate a direct failure response
+            self.logger.warning("All recovery attempts failed. Generating direct failure message.")
+            failure_message = (
+                f"I'm sorry, but I encountered an error while trying to process your request.\n\n"
+                f"The step \"{failed_step.description}\" failed with the following error:\n"
+                f"```\n{error_details}\n```\n"
+                f"Attempts to automatically recover from this issue were unsuccessful."
+            )
+            return failure_message
         else:
             # If no specific failed step found, provide a generic failure message
             self.logger.error(f"Plan execution failed but no failed step identified for plan: {plan.goal}")

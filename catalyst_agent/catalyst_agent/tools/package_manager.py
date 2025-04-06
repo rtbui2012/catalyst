@@ -8,6 +8,8 @@ via pip, enabling dynamic extension of capabilities.
 import os
 import sys
 import subprocess
+import re
+import logging
 from typing import Dict, List, Any, Optional, Union
 from .base import Tool, ToolResult
 from catalyst_agent.event_queue import EventQueue
@@ -27,6 +29,8 @@ class PackageInstallerTool(Tool):
             description="Install Python packages using pip. Can check if packages are installed and install missing ones.",
             event_queue=event_queue
         )
+        # Initialize logger for the tool instance
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
     
     def execute(self, packages: List[str], upgrade: bool = False) -> ToolResult:
         """
@@ -140,23 +144,48 @@ class PackageInstallerTool(Tool):
             Dictionary mapping error patterns to handler information
         """
         def module_not_found_arg_generator(error_message: str, failed_step: Dict[str, Any]) -> Dict[str, Any]:
-            # Extract the module name from the error message
-            # Example error: "ModuleNotFoundError: No module named 'PIL'"
-            if "No module named" in error_message:
-                module_name = error_message.split("No module named ")[1].strip().strip("'\"")
+            # Try to extract module name using regex for different patterns
+            module_name = None
+
+            # Pattern 1: "No module named 'module_name'" / "No module named \"module_name\""
+            match1 = re.search(r"No module named ['\"]([^'\"]+)['\"]", error_message)
+            if match1:
+                module_name = match1.group(1)
+
+            # Pattern 2: "Missing optional dependency 'module_name'" / "... \"module_name\""
+            match2 = re.search(r"Missing optional dependency ['\"]([^'\"]+)['\"]", error_message)
+            if not module_name and match2: # Only use if pattern 1 didn't match
+                module_name = match2.group(1)
+                # Add more specific package name mappings here if needed (e.g., some libs have different import vs pip names)
+                # Example: if module_name == 'PIL': module_name = 'Pillow'
+                # For tabulate, the import name and pip name are the same.
+
+            if module_name:
+                self.logger.info(f"Extracted module '{module_name}' for installation from error.")
                 return {"packages": [module_name], "upgrade": False}
-            return {"packages": ["unknown"], "upgrade": False}
+            else:
+                # Fallback if no pattern matches
+                self.logger.warning(f"Could not extract module name from error: {error_message}")
+                # Returning the error message itself might be problematic, return a placeholder
+                return {"packages": ["unknown_package_from_error"], "upgrade": False}
         
         return {
+            # Keep original patterns for matching, but use the improved generator
             "ModuleNotFoundError: No module named": {
                 "tool": "package_installer",
-                "description": "Install missing Python module",
+                "description": "Install missing Python module (ModuleNotFoundError)",
                 "arg_generator": module_not_found_arg_generator
             },
             "ImportError: No module named": {
                 "tool": "package_installer",
-                "description": "Install missing Python module",
+                "description": "Install missing Python module (ImportError)",
                 "arg_generator": module_not_found_arg_generator
+            },
+            # Add a new pattern specifically for the pandas optional dependency error
+            "ImportError: Missing optional dependency": {
+                 "tool": "package_installer",
+                 "description": "Install missing optional Python dependency",
+                 "arg_generator": module_not_found_arg_generator
             }
         }
 

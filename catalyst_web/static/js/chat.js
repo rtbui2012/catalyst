@@ -700,17 +700,28 @@ class CatalystChat {
             </div>
         `;
 
-        // Update message text with Latex rendering
+        // Check for image path or render LaTeX
         const messageTextContainer = messageDiv.querySelector('.message-text');
-        renderMathInElement(messageTextContainer, {
-            delimiters: [
-                {left: '$$', right: '$$', display: true},
-                {left: '$', right: '$', display: false},
-                {left: '\\[', right: '\\]', display: true},
-                {left: '\\(', right: '\\)', display: false},
-            ],
-            throwOnError: false
-        })
+        const imagePathRegex = /^\.\/blob_storage\/(.+\.(?:png|jpg|jpeg|gif|svg|webp))$/i; // Added webp
+        const match = content.match(imagePathRegex); // Check original content
+
+        if (match && match[1]) {
+            // It's an image path, render an img tag
+            const imageName = match[1];
+            // Use encodeURIComponent just in case filename has special chars
+            messageTextContainer.innerHTML = `<img src="/blob_storage/${encodeURIComponent(imageName)}" alt="${imageName}" class="chat-image">`;
+        } else {
+            // Otherwise, render LaTeX if needed
+            renderMathInElement(messageTextContainer, {
+                delimiters: [
+                    {left: '$$', right: '$$', display: true},
+                    {left: '$', right: '$', display: false},
+                    {left: '\\[', right: '\\]', display: true},
+                    {left: '\\(', right: '\\)', display: false},
+                ],
+                throwOnError: false
+            });
+        }
         
         // Add event listener for edit button if this is a user message
         if (sender === 'user') {

@@ -14,6 +14,7 @@ from .image_generation import ImageGenerationTool
 from .web_search import WebSearchTool
 from .web_fetch import WebFetchTool
 from .package_manager import PackageInstallerTool
+from .download_file import DownloadFileTool
 
 # Import discovery utilities
 from .discovery import discover_tools, instantiate_tool
@@ -28,6 +29,7 @@ __all__ = [
     'WebSearchTool',
     'WebFetchTool',
     'PackageInstallerTool',
+    'DownloadFileTool',
     'discover_tools',
     'instantiate_tool'
 ]
