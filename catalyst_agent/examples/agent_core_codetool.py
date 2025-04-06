@@ -20,7 +20,7 @@ from catalyst_agent.tools.package_manager import PackageInstallerTool
 
 if __name__ == "__main__":
     # Initialize the agent with a configuration
-    config = AgentConfig(blob_storage_path='./output')
+    config = AgentConfig(blob_storage_path='/workspaces/catalyst/blob_storage')
     
     # Add current date to config metadata to help with temporal understanding
     current_date = datetime.now().strftime("%Y-%m-%d")

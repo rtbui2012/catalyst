@@ -30,11 +30,9 @@ class DynamicCodeExecutionTool(Tool):
     
     def __init__(self, 
                  name: str = "execute_python", 
-                 description: str = "Execute Python code dynamically and return the results. "
-                  "This is very flexible and can be used when other tools fail. "
-                  "Your code should output results to stdout. If your code writes a file (e.g., an image, a document) to the './blob_storage' directory, "
-                  "print the relative path (e.g., './blob_storage/my_image.png') to stdout. "
-                  "When generating Markdown links or references for files saved in './blob_storage', use the URL path '/blob_storage/' followed by the filename (e.g., '/blob_storage/my_image.png').",
+                 description: str = "Execute Python code dynamically and return the results. Your code "
+                  "should output results to stdout. If your code writes a file (e.g., an image, a document) to the "
+                  "'./blob_storage' directory, print the relative path (e.g., './blob_storage/my_image.png') to stdout. ",
                  max_execution_time: int = 30,
                  allowed_imports: Optional[list] = None,
                  event_queue: Optional[EventQueue] = None):

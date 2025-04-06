@@ -18,7 +18,7 @@ class AgentConfig:
     api_type: str = "azure"  # Deprecated? Provider logic now uses llm_provider
     llm_provider: str = "azure" # "azure" or "gemini"
     temperature: float = 0.7
-    max_tokens: int = 4096 # Increased from 2048 to allow for more complex plans/reasoning
+    max_tokens: int = 1024*8
     # Agent behavior configuration
     planning_enabled: bool = True
     self_improvement_enabled: bool = False

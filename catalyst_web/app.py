@@ -47,6 +47,7 @@ app.register_blueprint(chat_bp)
 app.register_blueprint(api_bp, url_prefix='/api')
 
 @app.route('/blob_storage/<path:filename>')
+@app.route('/blob/<path:filename>')
 def serve_blob(filename):
     """Serve files from the /blob_storage directory."""
     blob_folder = os.path.abspath("./blob_storage")  # Use absolute path

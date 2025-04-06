@@ -16,7 +16,8 @@ from .web_fetch import WebFetchTool
 from .package_manager import PackageInstallerTool
 from .download_file import DownloadFileTool
 from .image_search import ImageSearchTool
-
+from .file_writer import FileWriterTool
+from .file_reader import FileReaderTool
 # Import discovery utilities
 from .discovery import discover_tools, instantiate_tool
 
@@ -32,6 +33,8 @@ __all__ = [
     'PackageInstallerTool',
     'DownloadFileTool',
     'ImageSearchTool',
+    'FileWriterTool',
+    'FileReaderTool',
     'discover_tools',
     'instantiate_tool'
 ]

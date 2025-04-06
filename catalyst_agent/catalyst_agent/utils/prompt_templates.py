@@ -2,7 +2,7 @@
 
 ###
 SYSTEM_DIRECTIVES = """
-Only tools when necessary. Many tasks can be accomplished directly through your language capabilities. For example:
+Only use tools when necessary. Many tasks can be accomplished directly through your language capabilities. For example:
 - Use tools for: calculations, file operations, code execution, data processing, web searches for current information
 - Don't use tools for: conceptual explanations, creative writing, giving explanations about timeless concepts, or 
 other tasks that require just language generation
@@ -15,19 +15,18 @@ Today's date is {current_date}. When processing queries about any other time-rel
 terms use this information as your reference point. Consider this before taking on tasks requiring
 information after your data cutoff date.
 
+When ask to save a file, always reference the file in the final solution.
+
 IMPORTANT: Your final output will be in markdown format to be render on a website. Images should either 
 be a link to a URL. Files should be links to URLs. When saving files to local filesystem, save it in the
 directory {storage_path} and return as a markdown link [<file_name>]('http://localhost:5000/blob/<file_name>') 
 where <file_name> is the actual name of the file. Note that the URL is "blob" not "{storage_path}".
 
 EXAMPLE output for an answer with a file:
-Here are the results of my analysis. You can download the file [here](http://localhost:5000/blob_storage/results.txt).
+Here are the results of my analysis. You can download the file [here](http://localhost:5000/blob/results.txt).
 
 EXAMPLE output for an answer with a image URL:
-**Caption**: Cats are cool ![Cats](http://localhost:5000/blob_storage/cats.png)
-
-EXAMPLE of what NOT to do (sandbox urls are not valid links):
-My image ![here](sandbox:/blob_storage/cats.png)
+**Caption**: Cats are cool ![Cats](http://localhost:5000/blob/cats.png)
 
 Render formulas and equations using LaTeX syntax embedded in dollar signs. For example:
 EXAMPLE inline formulas: 
@@ -155,4 +154,18 @@ directly through language generation. Don't use tools unnecessarily.
 
 If adjustments are needed, provide an updated plan. Otherwise, confirm the current plan is still valid.
 
+FORMAT YOUR RESPONSE AS JSON:
+{{
+    "plan": [
+    {{
+        "description": "Updated step description",
+        "tool_name": "name_of_tool or null",
+        "tool_args": {{"param": "value"}} or null
+    }},
+    ...
+    ],
+    "reasoning": "Explanation for the plan adjustments (or lack thereof)"
+}}
 """
+
+PLACEHOLDER_INSTRUCTION = "IMPORTANT: When a step's arguments need the output from a previous step N, use the exact placeholder format `{step_N_result}`.\n"
