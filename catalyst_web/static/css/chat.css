@@ -619,12 +619,11 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 80px; /* Fixed width of 30px as requested */
   height: 20px;
   border-radius: 0; /* Rectangular corners (not rounded) */
   padding: 2px;
   font-size: 10px;
-  text-transform: uppercase;
+  text-transform: lowercase;
   font-weight: bold;
   background-color: #f0f0f0;
   border: 1px solid #ddd;
@@ -639,7 +638,7 @@
 }
 
 .event-tag .event-label {
-  font-size: 10px;
+  font-size: 8px;
 }
 
 /* Event tag types */
