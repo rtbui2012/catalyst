@@ -56,6 +56,8 @@ You can:
 4. Remove steps that are no longer needed
 5. Fill in placeholders with actual values if applicable
 
+Your response MUST be a valid JSON object containing the evaluation and any updated plan.
+
 {SYSTEM_DIRECTIVES}
 """
 
